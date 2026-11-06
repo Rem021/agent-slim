@@ -1,35 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT_PATH="${SKILL_DIR}/scripts/agent_slim.py"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+chmod +x "$REPO_DIR/scripts/agent_slim.py"
 
-chmod +x "${SCRIPT_PATH}"
+# 1. Install CLI binary symlink into ~/.local/bin
+mkdir -p "$HOME/.local/bin"
+ln -sfn "$REPO_DIR/scripts/agent_slim.py" "$HOME/.local/bin/agent-slim"
+echo "[✓] Installed CLI: $HOME/.local/bin/agent-slim"
 
-# 1. Install CLI symlink in ~/.local/bin
-mkdir -p "${HOME}/.local/bin"
-ln -sf "${SCRIPT_PATH}" "${HOME}/.local/bin/agent-slim"
-echo "✅ Installed CLI: ${HOME}/.local/bin/agent-slim -> ${SCRIPT_PATH}"
-
-# 2. Register skill across AI Agent skill directories
+# 2. Register Universal Agent Skill across mainstream AI Coding Agents
 AGENT_SKILL_DIRS=(
-  "${HOME}/.agents/skills"
-  "${HOME}/.claude/skills"
-  "${HOME}/.codex/skills"
-  "${HOME}/Library/Application Support/orca/antigravity-chat/config/skills"
-  "${HOME}/Library/Application Support/orca/antigravity-chat/antigravity-cli/skills"
+  "$HOME/.agents/skills"
+  "$HOME/.claude/skills"
+  "$HOME/.codex/skills"
+  "$HOME/.cursor/skills"
+  "$HOME/.windsurf/skills"
 )
 
-for dir in "${AGENT_SKILL_DIRS[@]}"; do
-  if [ -d "$(dirname "${dir}")" ]; then
-    mkdir -p "${dir}"
-    target="${dir}/agent-slim"
-    if [ "${target}" != "${SKILL_DIR}" ]; then
-      rm -rf "${target}"
-      ln -sf "${SKILL_DIR}" "${target}"
-      echo "✅ Registered Agent Skill: ${target} -> ${SKILL_DIR}"
-    fi
+for skill_root in "${AGENT_SKILL_DIRS[@]}"; do
+  mkdir -p "$skill_root"
+  target_link="$skill_root/agent-slim"
+  if [ "$target_link" != "$REPO_DIR" ]; then
+    ln -sfn "$REPO_DIR" "$target_link"
+    echo "[✓] Linked Agent Skill: $target_link -> $REPO_DIR"
   fi
 done
 
-echo "🎉 agent-slim installation complete! Run 'agent-slim --help' to get started."
+echo ""
+echo "=================================================================="
+echo "  agent-slim v2.0.0 installed successfully!"
+echo "  Run: agent-slim --help"
+echo "=================================================================="

@@ -1,158 +1,134 @@
-# 🧹 agent-slim
+# `agent-slim` (v2.0.0)
 
 **Universal AI Agent & Multi-Stack Workspace Deep Cleaner**  
-*Reclaim hundreds of gigabytes of build caches, GPU/frame dumps, VM rootfs images, and duplicate agent worktree artifacts — with 100% preservation of source code, Git history, active tasks, referenced media, and agent memory.*
+**面向所有开发者与全栈 AI 编程智能体的通用工作区深度瘦身工具 & Agent Skill**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-3776AB.svg)](https://www.python.org/)
-[![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-brightgreen.svg)](#)
-[![Agent Skill Ready](https://img.shields.io/badge/Agent_Skill-Codex_%7C_Claude_%7C_Orca_%7C_Antigravity-purple.svg)](#install-as-an-ai-agent-skill)
+[![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-success.svg)](#)
+[![AI Agents](https://img.shields.io/badge/Agents-Claude%20%7C%20Codex%20%7C%20Cursor%20%7C%20Windsurf%20%7C%20Cline%20%7C%20Aider%20%7C%20Orca-purple.svg)](#)
 
 ---
 
-## Why `agent-slim`?
+## Why `agent-slim`? / 为什么需要 `agent-slim`？
 
-Modern AI-assisted engineering with **Codex**, **Claude Code**, **Orca**, **Antigravity**, and **Cursor** spawns dozens of parallel git worktrees, automated test harnesses, GPU/frame comparisons, simulator backups, and VM runs. Within weeks, a project drive can balloon past **1 TB+** — yet conventional cleaners (`git clean -fdx`, `rm -rf`) are dangerous because they:
+When working with modern AI coding agents (**Claude Code, OpenAI Codex, Cursor, Windsurf, Cline, Roo Code, Aider, OpenHands, Devin, Orca, Antigravity**), agents routinely:
+- Spawn multiple parallel **git worktrees** (`worktree-1`, `worktree-2`, ...) to explore features or run isolated bugfixes;
+- Trigger full compiler toolchains (`Cargo target/`, `Xcode DerivedData/`, `Next.js .next/`, `Gradle .gradle/`, `Unity Library/`, `CMakeFiles/`);
+- Dump intermediate test artifacts, crash dumps (`.core`, `.dmp`, `.xcresult`, `.trace`), W&B/Lightning experiment logs, and temporary scratch copies.
 
-1. **Wipe Agent Memory & Handoff Context**: Deleting local `reports/`, `research_notes/`, `RUN_STATE.json`, or `USER_TRIAL_INSTALL.json` destroys multi-session agent continuity.
-2. **Corrupt Active Background Tasks**: Deleting `DerivedData`, QEMU `.cpio` images, or `.fcpbundle` caches while a background agent or host app is running crashes the task.
-3. **Break Media & Timeline Links**: Blindly deleting `.mov`, `.tiff`, or `.3fr` files breaks Final Cut Pro `.fcpxml` timelines and camera calibration fixtures.
+Within days, a few 500 MB repositories can silently balloon into **200 GB – 1 TB+** of redundant disk usage. Traditional cleaners either miss multi-worktree agent caches or recklessly delete files that break your project or erase your AI agent's memory.
 
-**`agent-slim`** solves this by combining **multi-stack build cache intelligence**, **live process/open-file locking (`ps` + `lsof`)**, **media reference parsing**, and **strict agent-memory whitelisting** in a single zero-dependency tool and Agent Skill.
-
----
-
-## Key Features & Safety Guarantees
-
-### 🛡️ Five Core Safety Invariants
-1. **Active Process & Open-File Guard (`ps` + `lsof`)**
-   - Automatically inspects running processes (`xcodebuild`, `swift-frontend`, `qemu`, `simctl`, `Final Cut Pro`, `DaVinci Resolve`, `cargo`, `python`, `node`) and locks any workspace or subdirectory currently in use.
-2. **100% Agent Memory & Handoff Preservation**
-   - Strictly protects `README.md`, `PROGRESS.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `STATUS.md`, `RULES.md`, `GOAL.md`, `docs/`, `reports/`, `research_notes/`, and small JSON/YAML/TXT receipts (`<=256KB`).
-3. **100% Git & Source Code Integrity**
-   - Never touches `.git` directories, git worktree links, `.bundle` / `.patch` archives, or source code across any language.
-4. **Reference-Aware Media & Project Protection**
-   - Parses Final Cut Pro `.fcpxml` timelines (`src="file://..."`), `.fcpbundle` libraries (preserving `Original Media` and SQLite databases while cleaning regenerable `Render Files`), `.cube` LUTs, and `fixtures/` directories.
-5. **Recent-File Grace Window**
-   - Protects files modified within the last **18 hours** (`--min-age-hours 18` by default) so active or freshly completed work is never disturbed.
+`agent-slim` solves this for **any developer and any tech stack**:
+1. **7 Universal Tech Ecosystems Supported Out-of-the-Box** (Web/JS/TS, Python/AI/ML, Rust/C++/Go/Zig, iOS/macOS/Android/Flutter, Unity/Unreal/Godot, Terraform/Cloud, Media/Graphics).
+2. **5-Layer Safety Guardrails** that strictly protect Git history, uncommitted work, AI Agent memory/rules (`AGENTS.md`, `CLAUDE.md`, `.cursor/`, `.claude/`, `.codex/`, `MEMORY.md`, `PROGRESS.md`), AI model weights (`.safetensors`, `.gguf`, `.pt`), and sibling-verified project directories.
+3. **Dual-Mode Usage**: Works both as a **standalone CLI (`agent-slim`)** and as an **installable AI Agent Skill (`SKILL.md`)** that any agent can invoke autonomously.
 
 ---
 
-## Multi-Stack Coverage Matrix
+## Architecture & 5-Layer Safety Guardrails / 五层安全护栏架构
 
-`agent-slim` works out-of-the-box across diverse project types:
-
-| Project Type / Stack | What `agent-slim` Cleans | What `agent-slim` Protects |
-|---|---|---|
-| **Swift / Xcode / iOS / macOS** | `DerivedData`, `.build`, `ModuleCache`, `Index.noindex`, `.xcresult`, `.trace`, `.dSYM`, `SimBackup`, unavailable Xcode simulators | `.xcodeproj`, `Package.swift`, `Sources/`, `Tests/`, active signed `.app` deliveries |
-| **Video / Color / FCP / DaVinci** | `.fcpbundle/**/Render Files`, raw GPU/host texture dumps (`.rgba16f`, `.rgba32f`, `.rgba32uint`, `.raw`, `.bin`), unreferenced scratch test exports (`.mov`, `.mp4`, `.tiff`), giant pixel-comparison JSONs (`>256KB`) | `.fcpbundle` databases & `Original Media`, all media referenced by `.fcpxml`, `.cube` LUTs, calibration `fixtures/` |
-| **Camera Science / RAW ISP Lab** | Duplicate multi-gigabyte RAW copies (`.3fr`, `.cap`, `.iiq`, `.ari`, `.arw`, `.dng`, `.mxf`) across scratch worktrees, `.negathumb`, `.bnnsir`, `.rgba-f32le` | Canonical RAW sample (keeps the first copy of each unique RAW asset), ISP source code, test reports & metrics |
-| **Embedded / Firmware / QEMU / C++** | `CMakeFiles`, `.o`, `.d`, `.pch`, `.core`, duplicate historical trial `.cpio` rootfs images in `runs/` & `runtime/` | Base firmware/kernel images, active QEMU session files, `build-receipt.json`, `candidate.json`, device trees (`.dtb`) |
-| **Web / Node / TypeScript** | `.next`, `.nuxt`, `.turbo`, `.vite`, `.parcel-cache`, `.eslintcache` | `src/`, `package.json`, lockfiles, active worktree `node_modules` |
-| **Python / AI / Data Science** | `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.tox`, `.nox` | `.py`, `.ipynb`, `pyproject.toml`, `requirements.txt`, documentation & reports |
-| **Rust / Go / JVM / Android** | Cargo `target/` (when `Cargo.toml` present), `.gradle`, build intermediates | `Cargo.toml`, `go.mod`, `build.gradle`, source trees |
-
----
-
-## Installation
-
-### Option A: One-Line Install (CLI + All AI Agents Skill)
-
-```bash
-git clone https://github.com/Rem021/agent-slim.git ~/.agents/skills/agent-slim
-chmod +x ~/.agents/skills/agent-slim/install.sh
-~/.agents/skills/agent-slim/install.sh
+```mermaid
+flowchart TD
+    A["Scan Target Workspace(s) / Multi-Worktrees"] --> B{"Layer 1: VCS Protection"}
+    B -->|".git / .svn / .hg / .jj"| P1["NEVER TOUCH (Keep 100% Git State)"]
+    B --> C{"Layer 2: Universal AI Agent Memory & Rules"}
+    C -->|".agents / .claude / .codex / .cursor / .windsurf / .cline / .roo / .aider\nAGENTS.md / CLAUDE.md / MEMORY.md / PROGRESS.md / reports / docs / specs"| P2["NEVER TOUCH (Keep All Agent Context & Docs)"]
+    C --> D{"Layer 3: Active Process & Age Guardrail"}
+    D -->|"Modified < --min-age-hours"| P3["SKIP (Protect Running Builds/Tasks)"]
+    D --> E{"Layer 4: Context-Verified Stack Matcher"}
+    E -->|"Verify sibling Cargo.toml / package.json / Package.swift /\nbuild.gradle / Assets+ProjectSettings / *.uproject"| F{"Layer 5: Reference Graph & Model Guardrail"}
+    F -->|".safetensors / .gguf / .pt / Linked Assets / Top N Releases"| P4["PROTECT (Models, Active Media & Latest Releases)"]
+    F -->|"Unreferenced Caches, Intermediates & SHA-256 Scratch Duplicates"| G["Dry-Run Audit Report OR --execute Reclaim"]
 ```
 
-`install.sh` automatically:
+### What is ALWAYS Protected (Never Deleted)? / 永远受保护的内容
+
+| Protection Layer | Protected Targets |
+| :--- | :--- |
+| **1. Version Control & Code** | `.git/`, `.svn/`, `.hg/`, `.jj/`, all source code, uncommitted modifications, and all lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, `Cargo.lock`, `uv.lock`, `poetry.lock`, `Podfile.lock`, `Package.resolved`) |
+| **2. AI Agent Memory & Rules** | `.agents/`, `.claude/`, `.codex/`, `.gemini/`, `.cursor/`, `.windsurf/`, `.cline/`, `.roo/`, `.continue/`, `.aider/`, `.openhands/`, `.devin/`, `.orca/`, `.antigravity/`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `CURSOR.md`, `MEMORY.md`, `PROGRESS.md`, `HANDOFF.md`, `PLAN.md`, `RULES.md`, `.cursorrules`, `.windsurfrules`, `.clinerules`, `.roorules` |
+| **3. Docs, Specs & Test Truth** | `docs/`, `reports/`, `research_notes/`, `specs/`, `adr/`, `memory/`, `prompts/`, `skills/`, `fixtures/`, `testdata/`, `__snapshots__/`, `migrations/` |
+| **4. AI Model Weights** | `.safetensors`, `.gguf`, `.ckpt`, `.onnx`, `.pt`, `.pth`, `.bin`, `.h5`, `.tflite`, `.mlmodel` |
+| **5. Active Releases & Media** | Top `N` newest versioned release builds (`--keep-versions 2`) + any asset actively referenced in project manifests (`.fcpxml`, JSON pointers) |
+
+---
+
+## Supported Tech Stacks (7 Ecosystems) / 支持的七大技术栈生态
+
+| Ecosystem | Cleaned Caches & Build Artifacts | Context Verification Rule |
+| :--- | :--- | :--- |
+| **1. Web / Frontend / Full-Stack** | `.next`, `.nuxt`, `.output`, `.svelte-kit`, `.astro`, `.turbo`, `.parcel-cache`, `.vite`, `.angular`, `.docusaurus`, `.vercel`, `.netlify`, `.wrangler`, `storybook-static`, `playwright-report`, `test-results`, `.nyc_output`, `.eslintcache`, `node_modules` *(opt-in)* | `node_modules/` requires `--include-node-modules` + sibling `package.json` |
+| **2. Python / AI / ML / Data** | `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.pytype`, `.hypothesis`, `.tox`, `.nox`, `.ipynb_checkpoints`, `.gradio`, `lightning_logs`, `multirun` (Hydra), `wandb/` local run caches, `.pyc`/`.pyo` | `wandb/` verified by `run-*` / `offline-run-*` structure; model weights (`.safetensors`, `.gguf`, `.pt`) strictly protected |
+| **3. Systems (Rust / C / C++ / Go / Zig)** | Cargo `target/`, Maven `target/`, `CMakeFiles`, `cmake-build-*`, `bazel-*`, `.zig-cache`, `zig-out`, `ccache`/`sccache`, `.o`, `.obj`, `.lo`, `.dia`, `.pch`, `.gch`, `.core`/`.dmp` crash dumps, `.profraw`/`.profdata` | `target/` requires sibling `Cargo.toml` or `pom.xml`; `build/` requires `CMakeCache.txt` or `build.ninja` |
+| **4. Mobile & Desktop Native** | Xcode `DerivedData`, SwiftPM `.build`, `ModuleCache.noindex`, `Index.noindex`, `.xcresult`, `.dSYM`, `.trace`, Android `.gradle`, `.kotlin`, `.cxx`, Gradle/Flutter `build/`, `.dart_tool`, React Native `.expo`, unavailable iOS Simulators | `.build/` requires sibling `Package.swift` or Xcode project; `build/` requires `build.gradle(.kts)` or `pubspec.yaml` |
+| **5. Game Engines (Unity / Unreal / Godot)** | **Unity**: `Library/`, `Temp/`, `Obj/`, `Logs/`<br>**Unreal**: `Intermediate/`, `DerivedDataCache/`, `Saved/Logs`, `Saved/Crashes`<br>**Godot**: `.godot/` | Unity requires sibling `Assets/` + `ProjectSettings/`; Unreal requires sibling `*.uproject` |
+| **6. DevOps / Cloud / IaC** | Terraform `.terraform`, `.terragrunt-cache`, Serverless `.serverless`, AWS SAM `.aws-sam` | Exact provider/build cache directories |
+| **7. Media / Creative / Graphics** | Final Cut Pro `.fcpbundle` (`Render Files`, `Transcoded Media`, `Analysis Files`), Blender `.blend1`/`.blend2`, raw GPU framebuffer dumps (`.rgba16f`, `.rgba32f`, debug `.raw`), SHA-256 duplicate scratch files | `.fcpxml` reference graph parsed so active external clips are never touched |
+
+---
+
+## Quick Start / 快速安装与使用
+
+### 1. One-Line Install (CLI + Universal Agent Skill) / 一键安装
+
+```bash
+git clone https://github.com/Rem021/agent-slim.git
+cd agent-slim
+./install.sh
+```
+
+`./install.sh` automatically:
 - Installs the `agent-slim` CLI into `~/.local/bin/agent-slim`
-- Registers the `agent-slim` skill into:
-  - `~/.agents/skills/agent-slim`
-  - `~/.claude/skills/agent-slim` (Claude Code)
-  - `~/.codex/skills/agent-slim` (Codex)
-  - Orca / Antigravity skills directories (if present)
+- Registers the `agent-slim` Skill across your installed AI coding agents (`~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills`, `~/.cursor/skills`, etc.)
 
-### Option B: Standalone Zero-Install Execution
+### 2. CLI Usage Examples / 命令行使用示例
 
-Because `agent_slim.py` uses **only the Python 3 standard library**, you can run it directly on any macOS or Linux machine without installing anything:
-
+#### Step 1 — Dry-Run Audit (Default, 100% Safe, Deletes Nothing) / 默认安全预演扫描
 ```bash
-python3 scripts/agent_slim.py /path/to/workspace
+agent-slim ~/Projects /Volumes/WorkDrive/AI-Worktrees
 ```
 
----
-
-## Usage
-
-### 1. Dry-Run Inspection (Default — Safe Preview)
-
-Running `agent-slim` without `--execute` performs a full scan, checks active process locks and media references, and prints a detailed breakdown of reclaimable space:
-
+#### Step 2 — Execute Cleanup / 执行正式清理
 ```bash
-agent-slim /Volumes/WorkDrive/AI/Projects
+agent-slim ~/Projects /Volumes/WorkDrive/AI-Worktrees --execute
 ```
 
-Example output:
-
-```text
-🔍 [agent-slim v1.0.0] Scanning 1 root(s)...
-   • /Volumes/WorkDrive/AI/Projects
-🛡️  Active process guard locked 2 active path(s):
-   🔒 /Volumes/WorkDrive/AI/Projects/Mac/work/fx3-color-port-20261027
-   🔒 /Volumes/WorkDrive/AI/Data/Phayen-lab/stage6-integration-20261105
-🎬 Referenced media & project guard locked 75 media/project asset(s).
-
-========================================================================================
-📊 agent-slim Report — Mode: DRY-RUN (PREVIEW ONLY — pass --execute to delete)
-========================================================================================
-  Reclaimable / Deleted :   395,197 files  |   192.96 GiB ( 206.30 GB)
-  Protected / Retained  :   169,289 files  |     3.01 GiB (   3.23 GB)
-----------------------------------------------------------------------------------------
-    80.15 GiB (  86.06 GB)  [   2,498 files]  7. 历史测试批次导出的对比视频/全尺寸图像/临时压缩包 (.mov / .tiff / .png / .zip)
-    67.46 GiB (  72.43 GB)  [   4,590 files]  3. 原始 GPU/宿主帧转储与二进制中间产物 (.rgba16f / .rgba32f / .raw / .bin / .o 等)
-    19.09 GiB (  20.49 GB)  [  84,346 files]  8. 巨型逐像素/图块数值转储 JSON (>256KB)
-    18.69 GiB (  20.07 GB)  [  44,953 files]  2. 编译与构建缓存 (DerivedData / .build / .xcresult / .trace / SimBackup / __pycache__)
-========================================================================================
-```
-
-### 2. Execute Deep Cleanup & Save JSON Audit Receipt
-
+#### Step 3 — Full Multi-Worktree Sweep (Include `node_modules`, Protect Active Builds < 2h, Export JSON Audit)
 ```bash
-agent-slim /Volumes/WorkDrive/AI \
-  --execute \
+agent-slim ~/Projects \
+  --include-node-modules \
+  --min-age-hours 2 \
+  --keep-versions 2 \
+  --dedup-scratch-mb 25 \
   --clean-simulators \
-  --report-json ./reports/agent-slim-audit.json
+  --report-json ./slim-audit.json \
+  --execute
 ```
 
-### 3. CLI Reference
+### 3. Using as an AI Agent Skill / 在 AI Agent 中直接对话调用
 
-| Flag | Default | Description |
-|---|---|---|
-| `paths...` | `.` | One or more project or workspace root directories to scan |
-| `--execute` | `False` | Perform actual deletion and empty-directory pruning (default is dry-run) |
-| `--min-age-hours <H>` | `18.0` | Grace window in hours: protect files modified within the last `H` hours |
-| `--all-ages` | `False` | Ignore the modification-time grace window (still enforces active process locks) |
-| `--large-json-kb <KB>` | `256` | Size threshold in KB for cleaning giant pixel/tile dump JSONs inside scratch dirs |
-| `--protect <PATTERN>` | `[]` | Substring or path pattern to explicitly protect (repeatable) |
-| `--clean-simulators` | `False` | Also run `xcrun simctl delete unavailable` when `--execute` is active |
-| `--report-json <FILE>` | `None` | Write a machine-readable JSON audit receipt with per-category stats and samples |
+Once installed, simply tell **Claude Code, Codex, Cursor, Windsurf, Cline, or Antigravity**:
+> *"Use `agent-slim` to audit and clean up my project worktrees without touching my progress or agent memory."*  
+> *“使用 `agent-slim` 深度清理我项目里的构建缓存和冗余文件，保留开发进度和 Agent 记忆。”*
 
 ---
 
-## Repository Structure
+## CLI Options Reference / 命令行参数一览
 
-```text
-agent-slim/
-├── SKILL.md                  # AI Agent Skill definition (Claude Code / Codex / Orca / Antigravity)
-├── README.md                 # Comprehensive bilingual documentation
-├── LICENSE                   # MIT License
-├── install.sh                # One-click installer for CLI (~/.local/bin) & Agent Skill symlinks
-└── scripts/
-    └── agent_slim.py         # Zero-dependency Python 3 universal cleaner engine
-```
+| Argument / Flag | Default | Description / 说明 |
+| :--- | :--- | :--- |
+| `paths...` | *(Required)* | One or more project, worktree, or workspace root directories to scan / 要扫描的一个或多个项目或工作区目录 |
+| `--execute` | `False` | Perform actual deletion (omit for safe Dry-Run preview) / 执行实际删除（不加则为安全预演模式） |
+| `--include-node-modules` | `False` | Also clean reinstallable `node_modules/` (verified by sibling `package.json`) / 同时清理可重装的 `node_modules/` |
+| `--keep-versions N` | `2` | Retain top `N` newest versioned release builds per prefix group / 每个版本组保留最新的 `N` 个发布包 |
+| `--min-age-hours H` | `0.0` | Skip caches/artifacts modified within the last `H` hours (protects active builds) / 跳过最近 `H` 小时内修改过的目录以保护正在运行的任务 |
+| `--dedup-scratch-mb MB` | `25.0` | Fast SHA-256 deduplication of identical large files (`>= MB`) in scratch/temp folders / 对临时目录中大于 `MB` 的重复大文件进行 SHA-256 去重 |
+| `--clean-simulators` | `False` | Run `xcrun simctl delete unavailable` on macOS / 清理 macOS 上失效的旧版 iOS 模拟器运行时 |
+| `--report-json PATH` | `None` | Write a full machine-readable JSON audit report to `PATH` / 导出完整的 JSON 审计报告 |
 
 ---
 
 ## License
 
-Released under the [MIT License](LICENSE).
+MIT License — Free for personal and commercial use.
