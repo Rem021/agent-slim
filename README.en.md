@@ -1,20 +1,20 @@
-# Agent-Slim: Multi-Stack & AI Workspace Deep Cleaner
+# Agent-Slim: Multi-Stack, Xcode & AI Workspace Deep Cleaner
 
 [![简体中文](https://img.shields.io/badge/Language-简体中文-0969da?style=flat)](./README.zh-CN.md)
-[![Version](https://img.shields.io/badge/Version-v2.0.0-1a7f37?style=flat)](https://github.com/Rem021/agent-slim/releases/tag/v2.0.0)
+[![Version](https://img.shields.io/badge/Version-v2.1.0-1a7f37?style=flat)](https://github.com/Rem021/agent-slim/releases/tag/v2.1.0)
 [![Platform](https://img.shields.io/badge/Platform-macOS_%7C_Linux-0969da?style=flat)](https://github.com/Rem021/agent-slim)
 [![Safety](https://img.shields.io/badge/Safety-5_Hard_Gates-8250df?style=flat)](#1-five-stage-safety-pipeline)
 [![License](https://img.shields.io/badge/License-MIT-656d76?style=flat)](./LICENSE)
 
 > **Switch Language**: [**👉 点击切换至简体中文完整版 (`README.zh-CN.md`)**](./README.zh-CN.md)
 
-**Agent-Slim** is a zero-dependency workspace cleaner designed for developers running parallel AI coding agents and multi-language projects. It reclaims tens of gigabytes of compiler intermediates, stale release archives, and abandoned agent logs while strictly protecting uncommitted source code, active agent memory, and referenced project assets.
+**Agent-Slim** (`v2.1.0`) is a zero-dependency workspace cleaner and Xcode/macOS hygiene engine designed for developers running parallel AI coding agents and multi-language projects. It reclaims tens to hundreds of gigabytes of compiler intermediates, stale release archives, Xcode `DerivedData` / `CoreSimulator` / `DeviceSupport` caches, iterative VM `.cpio` rootfs images, and ghost `LaunchServices` (`🚫`) app registrations while strictly protecting uncommitted source code, active agent processes, and referenced project assets.
 
 ---
 
 ## 1. Five-Stage Safety Pipeline
 
-Every directory is evaluated through five sequential safety gates before any cleanup action is allowed:
+Every directory and artifact is evaluated through five sequential safety gates before any cleanup action is allowed:
 
 <p align="center">
   <picture>
@@ -26,11 +26,11 @@ Every directory is evaluated through five sequential safety gates before any cle
 
 | Gate | Protection Rule | Verification Method |
 | :--- | :--- | :--- |
-| **Gate 01** | Active Process Lock | Skips any workspace with running builds, tests, or open file descriptors (`lsof`). |
-| **Gate 02** | Git Worktree Guard | Protects uncommitted edits, staged changes, untracked source files, and stashes (`git status --porcelain`). |
-| **Gate 03** | Agent Session Guard | Preserves active tasks, rule files, and conversation contexts Modified within the safety window. |
-| **Gate 04** | Asset Reference Graph | Scans source and documentation files to ensure referenced images, models, and fixtures are never removed. |
-| **Gate 05** | Latest Release Retention | Retains the newest runnable release artifact per project while purging older build archives. |
+| **Gate 01** | Active Process & Age Lock | Inspects running process command lines (`ps -axo command`) and modification timestamps (`--min-age-hours`) to skip active builds, VMs, or tests. |
+| **Gate 02** | Git Worktree Guard | Protects `.git`, `.svn`, `.hg`, `.jj`, uncommitted edits, staged changes, and tracked source files. |
+| **Gate 03** | Agent Session & Docs Guard | Preserves agent rules/memories (`CLAUDE.md`, `AGENTS.md`, `.claude/`, `.codex/`, `.orca/`) and report documents while traversing `reports/`, `outputs/`, and `work/` to purge binary build caches. |
+| **Gate 04** | Asset & Script Reference Graph | Parses `.fcpxml`, `.json` (`current.json`), `.py`, and `.sh` files so referenced media, `--source` baseline `.cpio` images, and active UUID installations are never removed. |
+| **Gate 05** | Multi-Pattern Retention | Retains the newest `N` semantic releases, `current.json` UUID transactions, iterative VM `.cpio` builds, and test-run state backups while purging superseded historical dumps. |
 
 ---
 
@@ -38,10 +38,10 @@ Every directory is evaluated through five sequential safety gates before any cle
 
 | Category | Supported Targets | Cleaned Artifacts | Protected State |
 | :--- | :--- | :--- | :--- |
-| **AI Coding Agents** | Claude Code, Codex, Cursor, Windsurf, Cline, Orca, Antigravity | Expired trace logs, orphaned browser caches, abandoned worktree build dirs | Active conversations, rules (`CLAUDE.md`, `AGENTS.md`), skill definitions |
-| **Apple & Mobile** | Xcode, SwiftPM, CocoaPods, React Native, Flutter | `DerivedData`, `.build`, intermediate symbol caches, old `.xcarchive` bundles | Source trees, `.xcodeproj`, signing profiles, latest release archive |
-| **Systems & Native** | Rust (`Cargo`), C/C++ (`CMake`), Go, Zig | `target/debug`, `cmake-build-*`, object files, shader compilation caches | `Cargo.lock`, source headers, prebuilt vendor libraries |
-| **Web & Python** | Node (`pnpm`, `npm`, `bun`), Next.js, Vite, Python (`uv`, `pytest`) | `.next/cache`, `.turbo`, `__pycache__`, `.pytest_cache`, `.mypy_cache` | Lockfiles, `.env*`, database files (`.sqlite`, `.db`), virtualenvs in active use |
+| **AI Coding Agents** | Claude Code, Codex, Cursor, Windsurf, Cline, Orca, Antigravity | Expired trace logs, detached build `.app` bundles, `*.saved-application`, superseded test-run `before/backup` state | Active conversations, rules (`CLAUDE.md`, `AGENTS.md`), skill definitions, JSON/Markdown test receipts |
+| **Apple, Xcode & Mobile** | Xcode, SwiftPM, CoreSimulator, LaunchServices, Flutter, React Native | `DerivedData`, `Debug/Release-iphoneos/simulator`, `*UITests-Runner.app`, `CoreSimulator` caches/clones/`coresymbolicationd`, `DeviceSupport`, ghost `lsregister` (`🚫`) app icons | Source trees, `.xcodeproj`, signing profiles, `/Applications`, active Simulator user apps, latest release archive |
+| **Systems, C++ & VM Labs** | Rust (`Cargo`), C/C++ (`CMake`), Go, Zig, QEMU/Kernel Labs | `target/`, `cmake-build-*`, object files (`.o`, `.dia`, `.pch`), superseded iterative `.cpio`/`.img`/`.fdat` rootfs builds | `Cargo.lock`, source headers, active QEMU/kernel process images, script-referenced `--source` baseline `.cpio` images |
+| **Web, Python & Media** | Node (`pnpm`, `npm`, `bun`), Next.js, Vite, Python (`uv`, `pytest`), FCP | `.next`, `.turbo`, `__pycache__`, `.pytest_cache`, `wandb/`, FCP `Render Files` / `Transcoded Media`, SHA-256 duplicate scratch files | Lockfiles, `.env*`, AI model weights (`.safetensors`, `.gguf`, `.pt`, `.onnx`), FCPXML-referenced source media |
 
 ---
 
@@ -49,18 +49,18 @@ Every directory is evaluated through five sequential safety gates before any cle
 
 ### Audit Mode (Read-Only Preview)
 
-Run a full read-only scan across your workspace directory to inspect reclaimable space without deleting any files:
+Run a full read-only scan across your workspace directory and Xcode system caches without deleting any files:
 
 ```bash
-python3 scripts/agent_slim.py scan --root ~/Projects
+python3 scripts/agent_slim.py scan --root ~/Projects --clean-xcode --clean-launchservices
 ```
 
-### Safe Cleanup Execution
+### Safe Cleanup Execution (Workspace + Xcode + LaunchServices)
 
-Execute cleanup after reviewing the audit report (enforces all 5 safety gates automatically):
+Execute permanent cleanup after reviewing the audit report (enforces all 5 safety gates and unregisters ghost `.app` icons from macOS Launchpad):
 
 ```bash
-python3 scripts/agent_slim.py clean --root ~/Projects --keep-latest-release 1
+python3 scripts/agent_slim.py clean --root ~/Projects --keep-latest-release 2 --clean-xcode --clean-device-support --clean-launchservices --shield-spotlight
 ```
 
 ### JSON Report for Automation
@@ -79,7 +79,7 @@ python3 scripts/agent_slim.py scan --root ~/Projects --json > report.json
 agent-slim/
 ├── SKILL.md                  # Agent skill specification & invocation guide
 ├── scripts/
-│   └── agent_slim.py         # Zero-dependency 5-gate scanner & cleaner
+│   └── agent_slim.py         # Zero-dependency 5-gate scanner, cleaner & Xcode/LaunchServices optimizer
 ├── assets/                   # Theme-adaptive SVG diagrams (Dark & Light)
 ├── README.md                 # English documentation (default)
 └── README.zh-CN.md           # Simplified Chinese documentation

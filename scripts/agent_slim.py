@@ -1,25 +1,31 @@
 #!/usr/bin/env python3
 """
-agent-slim v2.0.0 — Universal AI Agent & Multi-Stack Workspace Deep Cleaner
-===========================================================================
-A zero-dependency, safety-first disk space reclaimer engineered for ANY developer
-using AI coding agents (Claude Code, OpenAI Codex, Cursor, Windsurf, Cline,
-Roo Code, Aider, OpenHands, Devin, Orca, Antigravity) across ANY tech stack:
+agent-slim v2.1.0 — Universal AI Agent, Xcode & Multi-Stack Workspace Deep Cleaner
+==================================================================================
+A zero-dependency, safety-first disk space reclaimer and Xcode/macOS workspace
+hygiene engine engineered for ANY developer using AI coding agents (Claude Code,
+OpenAI Codex, Cursor, Windsurf, Cline, Roo Code, Aider, OpenHands, Devin, Orca,
+Antigravity) across 7 major technology ecosystems:
 
-  1. Web / JS / TS / Full-Stack (Next.js, Nuxt, Vite, Turbo, Astro, SvelteKit, Angular, Parcel, Storybook, Playwright/Cypress)
-  2. Python / AI / ML / Data Science (PyTorch/Lightning logs, W&B local caches, Gradio, Jupyter, Ruff, Mypy, Pytest, Tox, Nox, Hydra)
-  3. Systems / Rust / Go / C / C++ / Zig (Cargo target/, CMake, Bazel, Zig cache, .o/.obj/.d/.dia/.pch, core dumps, VM images)
-  4. Mobile & Desktop Native (Xcode DerivedData, SwiftPM .build, Android .gradle/.cxx/build, Flutter .dart_tool, React Native .expo, xcresult/dSYM/trace)
+  1. Web / JS / TS / Full-Stack (Next.js, Nuxt, Vite, Turbo, Astro, SvelteKit, Angular, Parcel, Storybook, Playwright)
+  2. Python / AI / ML / Data Science (PyTorch/Lightning logs, W&B local caches, Gradio, Jupyter, Ruff, Mypy, Pytest, Tox, Hydra)
+  3. Systems / Rust / Go / C / C++ / Zig / VM Labs (Cargo target/, CMake, Bazel, Zig, .o/.obj/.dia/.pch, iterative .cpio/.img rootfs dumps)
+  4. Apple / Xcode / Mobile & Desktop Native (DerivedData, Debug/Release-iphoneos/simulator, *UITests-Runner.app, *.saved-application,
+     *.app.saved, CoreSimulator caches/clones, DeviceSupport, xcresult/dSYM/trace, LaunchServices lsregister ghost-app cleanup,
+     Android .gradle/.cxx/build, Flutter .dart_tool, React Native .expo)
   5. Game Engines (Unity Library/Temp/Obj, Unreal Intermediate/DerivedDataCache/Saved, Godot .godot)
-  6. DevOps / Cloud / IaC (Terraform .terraform, Serverless .serverless, AWS SAM .aws-sam)
-  7. Media / Creative / Graphics (FCP Render Files, Blender .blend1/.blend2, raw GPU frame dumps, SHA-256 duplicate scratch files)
+  6. DevOps / Cloud / IaC (Terraform .terraform, Terragrunt, Serverless .serverless, AWS SAM .aws-sam)
+  7. Media / Creative / Graphics (FCP .fcpbundle Render/Transcoded/Analysis files, Blender .blend1/.blend2, raw GPU frame dumps, SHA-256 scratch dedup)
 
-Safety Architecture (5-Layer Guardrails):
-  - Layer 1: VCS & Uncommitted Work Protection (.git, .svn, .hg are NEVER touched)
-  - Layer 2: Universal AI Agent Memory & Rules Protection (.agents, .claude, .codex, .cursor, .windsurf, .cline, .roo, .aider, AGENTS.md, CLAUDE.md, MEMORY.md, PROGRESS.md, etc.)
-  - Layer 3: Active Process / Lockfile Detection (skips directories with recent modifications within --min-age-hours or active lockfiles)
-  - Layer 4: Context-Verified Build Directory Matching (e.g., only cleans `target/` if `Cargo.toml` or `pom.xml` exists alongside it; only cleans Unity `Library/` if `ProjectSettings/` + `Assets/` exist)
-  - Layer 5: Reference Graph & Version Retention (parses XML/JSON/YAML/Markdown manifests for linked assets, and retains the top N newest release packages while purging stale earlier iterations)
+Five-Stage Safety Pipeline (Hard Guardrails):
+  - Gate 01 (Active Process & Modification Lock): Inspects `ps -axo command` for open/active files & skips recent edits within `--min-age-hours`.
+  - Gate 02 (VCS & Worktree Guard): Never modifies or deletes `.git`, `.svn`, `.hg`, `.jj`, tracked source code, or uncommitted edits.
+  - Gate 03 (Agent Memory, Rules & Report Docs Guard): Strictly preserves `.agents`, `.claude`, `.codex`, `.cursor`, `CLAUDE.md`, `AGENTS.md`,
+    `SKILL.md`, and all markdown/JSON/script/media report files while traversing `reports/`, `outputs/`, and `work/` to purge binary build caches.
+  - Gate 04 (Asset & Script Reference Graph): Parses `.fcpxml`, `.json` (`current.json`, `vm-candidate-*.json`), `.py`, and `.sh` files so
+    referenced media, baseline `.cpio` images, and active installation UUIDs are never deleted.
+  - Gate 05 (Version, UUID-Pointer & Iterative Run Retention): Retains the newest `N` semantic releases, `current.json`-governed UUID installations,
+    iterative VM/firmware `.cpio` builds, and iterative test-run state backups while purging superseded historical binary dumps.
 """
 
 from __future__ import annotations
@@ -39,7 +45,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
+
+LSREGISTER_PATH = (
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/"
+    "LaunchServices.framework/Support/lsregister"
+)
 
 # ============================================================================
 # 1. UNIVERSAL GUARDRAILS: NEVER DELETE THESE DIRECTORIES OR FILES
@@ -51,11 +62,14 @@ PROTECTED_DIRS: Set[str] = {
     # AI Coding Agent State, Memory, Rules & Skills
     ".agents", ".agent", ".claude", ".codex", ".gemini", ".cursor",
     ".windsurf", ".cline", ".roo", ".continue", ".aider", ".openhands",
-    ".devin", ".goose", ". sweep", ".copilot", ".antigravity", ".orca",
+    ".devin", ".goose", ".sweep", ".copilot", ".antigravity", ".orca",
     # IDE & Repository Configuration
     ".github", ".gitlab", ".vscode", ".idea", ".fleet", ".zed",
     # Documentation, Architecture, Specs & Agent Memory Folders
-    "docs", "doc", "documentation", "reports", "research_notes", "notes",
+    # Note: `reports`, `outputs`, `work` are intentionally traversed so binary build caches
+    # (DerivedData, Debug-iphonesimulator, .xcresult, .dSYM, .saved-application) inside them
+    # can be cleaned while all report documents/scripts/images inside them remain protected.
+    "docs", "doc", "documentation", "research_notes", "notes",
     "specs", "adr", "architecture", "memory", "memories", "prompts", "skills",
     "plans", "context", "handover", "handoff",
     # Test Fixtures, Snapshots & Database Migrations (Source of Truth)
@@ -67,8 +81,8 @@ PROTECTED_FILES: Set[str] = {
     "AGENTS.md", "CLAUDE.md", "GEMINI.md", "CURSOR.md", "WINDSURF.md",
     "CODEX.md", "SKILL.md", "MEMORY.md", "PROGRESS.md", "HANDOFF.md",
     "STATUS.md", "PLAN.md", "TODO.md", "TASKS.md", "GOAL.md", "RULES.md",
-    "ARCHITECTURE.md", "CONTEXT.md", "PROMPT.md", "README.md", "CHANGELOG.md",
-    "CONTRIBUTING.md", "LICENSE", "SECURITY.md",
+    "ARCHITECTURE.md", "CONTEXT.md", "PROMPT.md", "README.md", "README.zh-CN.md",
+    "README.en.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "SECURITY.md",
     # Dotfile Agent Rules
     ".cursorrules", ".windsurfrules", ".clinerules", ".roorules",
     ".continuerules", ".aider.conf.yml", ".aider.model.settings.yml",
@@ -80,19 +94,19 @@ PROTECTED_FILES: Set[str] = {
     "Podfile", "Podfile.lock", "pubspec.yaml", "pubspec.lock",
     "Gemfile", "Gemfile.lock", "composer.json", "composer.lock",
     "Makefile", "CMakeLists.txt", "justfile", "Dockerfile", "docker-compose.yml",
+    "current.json", ".metadata_never_index",
     ".env", ".env.local", ".env.development", ".env.production", ".env.example",
 }
 
-# Protected AI Model Weight & Dataset Extensions (Protected by default unless --purge-models)
+# Protected AI Model Weight & Dataset Extensions
 PROTECTED_MODEL_EXTS: Set[str] = {
-    ".safetensors", ".gguf", ".ckpt", ".onnx", ".pt", ".pth", ".bin", ".h5", ".tflite", ".mlmodel"
+    ".safetensors", ".gguf", ".ckpt", ".onnx", ".pt", ".pth", ".h5", ".tflite", ".mlmodel"
 }
 
 # ============================================================================
 # 2. UNIVERSAL MULTI-STACK CACHE & ARTIFACT SIGNATURES
 # ============================================================================
 
-# Unconditional disposable cache/build directories (safe to remove in any project)
 UNCONDITIONAL_CACHE_DIRS: Dict[str, str] = {
     # Web / JS / TS / Full-Stack
     ".next": "Web Build Cache (Next.js .next)",
@@ -135,9 +149,20 @@ UNCONDITIONAL_CACHE_DIRS: Dict[str, str] = {
     "sccache": "Compiler Cache (sccache)",
     # Mobile & Desktop Native (Xcode / Swift / Android / Flutter / React Native)
     "DerivedData": "Xcode DerivedData Build Cache",
+    "Intermediates.noindex": "Xcode Build Intermediates (Intermediates.noindex)",
     "ModuleCache.noindex": "Clang/Swift Module Cache",
     "Index.noindex": "Xcode Index Cache (Index.noindex)",
     "SDKStatCaches.noindex": "Xcode SDK Stat Cache",
+    "Debug-iphoneos": "Xcode iOS Device Debug Build Products (Debug-iphoneos)",
+    "Debug-iphonesimulator": "Xcode iOS Simulator Debug Build Products (Debug-iphonesimulator)",
+    "Release-iphoneos": "Xcode iOS Device Release Build Products (Release-iphoneos)",
+    "Release-iphonesimulator": "Xcode iOS Simulator Release Build Products (Release-iphonesimulator)",
+    "Debug-appletvos": "Xcode tvOS Debug Build Products",
+    "Release-appletvos": "Xcode tvOS Release Build Products",
+    "Debug-watchos": "Xcode watchOS Debug Build Products",
+    "Release-watchos": "Xcode watchOS Release Build Products",
+    "Debug-xros": "Xcode visionOS Debug Build Products",
+    "Release-xros": "Xcode visionOS Release Build Products",
     ".swiftpm": "Swift Package Manager Cache (.swiftpm)",
     ".gradle": "Gradle Project Cache (.gradle)",
     ".kotlin": "Kotlin Compiler Cache (.kotlin)",
@@ -158,15 +183,23 @@ UNCONDITIONAL_CACHE_DIRS: Dict[str, str] = {
 PREFIX_CACHE_DIRS: Tuple[Tuple[str, str], ...] = (
     ("cmake-build-", "CLion / CMake Build Directory (cmake-build-*)"),
     ("bazel-", "Bazel Build Symlink/Output (bazel-*)"),
-    (" DerivedData", "Xcode DerivedData Cache"),
+    ("DerivedData-", "Xcode Custom DerivedData Cache (DerivedData-*)"),
+    ("derived-simulator", "Xcode Simulator DerivedData Cache (derived-simulator*)"),
+    ("xcode-install", "Xcode Temporary Install Build Cache (xcode-install*)"),
+    ("xcode-release", "Xcode Temporary Release Build Cache (xcode-release*)"),
 )
 
-# Disposable directories matched by suffix (bundle extensions that are directories on macOS)
+# Disposable directories matched by suffix (macOS bundles & Xcode diagnostic/backup bundles)
 SUFFIX_CACHE_DIRS: Tuple[Tuple[str, str], ...] = (
     (".xcresult", "Xcode Test Result Bundle (.xcresult)"),
     (".dSYM", "Debug Symbols Bundle (.dSYM)"),
     (".trace", "Instruments Profiling Trace (.trace)"),
     (".SavedState", "macOS Saved Application State (.SavedState)"),
+    (".saved-application", "Stale Backup Application Bundle (.saved-application)"),
+    (".saved-service", "Stale Backup PlugInKit/XPC Service Bundle (.saved-service)"),
+    (".app.saved", "Timestamped Backup Application Bundle (.app.saved)"),
+    ("UITests-Runner.app", "Xcode UI Test Runner App Bundle (*UITests-Runner.app)"),
+    ("Tests-Runner.app", "Xcode Test Runner App Bundle (*Tests-Runner.app)"),
 )
 
 # Disposable individual file extensions (intermediate compiler outputs, dumps, backups)
@@ -231,6 +264,7 @@ class ScanReport:
     candidates: List[CandidateItem] = field(default_factory=list)
     protected_notes: List[str] = field(default_factory=list)
     skipped_active: List[str] = field(default_factory=list)
+    hygiene_notes: List[str] = field(default_factory=list)
 
     @property
     def total_bytes(self) -> int:
@@ -312,21 +346,104 @@ def fast_file_signature(path: Path) -> Optional[str]:
         return None
 
 
+def collect_active_process_paths() -> Tuple[Set[Path], Set[str]]:
+    """
+    Gate 01: Inspect running process command lines (`ps -axo command`) so any file,
+    archive, or directory actively used by `qemu`, `xcodebuild`, `python3`, etc. is protected.
+    """
+    active_paths: Set[Path] = set()
+    active_basenames: Set[str] = set()
+    try:
+        out = subprocess.check_output(["ps", "-axo", "command"], text=True, errors="ignore")
+        for m in re.finditer(r"(/[^\s,;\"'<>|]+)", out):
+            raw = m.group(1).rstrip("):")
+            if len(raw) > 4:
+                p = Path(raw)
+                active_paths.add(p)
+                active_basenames.add(p.name)
+                try:
+                    active_paths.add(p.resolve())
+                except OSError:
+                    pass
+    except Exception:
+        pass
+    return active_paths, active_basenames
+
+
 # ============================================================================
-# 4. CONTEXT-VERIFIED BUILD DIRECTORY DETECTION (LAYER 4 GUARDRAIL)
+# 4. CONTEXT-VERIFIED BUILD & BUNDLE DETECTION (GATE 04 / LAYER 4)
 # ============================================================================
+
+TRANSIENT_APP_ANCESTORS: Set[str] = {
+    "work", "archive", "builds", "taskhistory", "phayen-lab", "deriveddata",
+    "candidate-products", "signed-products", "hostvalidation", "unpacked",
+    "verified", "payload", "batch2-identity-records", "before", "recovery",
+    "target-app", "runner-app", "preserved-current", "backups",
+}
+
+
+def is_transient_build_app_bundle(dir_path: Path, dir_name: str, active_paths: Set[Path]) -> Optional[Tuple[str, str]]:
+    """
+    Detect detached Xcode / macOS / iOS `.app` build artifacts inside transient agent worktrees,
+    test harnesses, archives, or backup folders that pollute Spotlight and LaunchServices (`🚫` icons),
+    while strictly protecting `/Applications`, `/System`, `~/Library/Plug-Ins`, and active release bundles.
+    """
+    if not dir_name.endswith(".app"):
+        return None
+
+    # Never touch system or standard installed app directories
+    s_path = str(dir_path)
+    if s_path.startswith(("/Applications/", "/System/", "/Library/")) or "/Library/Plug-Ins/" in s_path:
+        return None
+    if "/Library/Daemon Containers/" in s_path:
+        return None
+
+    # Never touch an app bundle that is actively running in `ps aux`
+    if dir_path in active_paths or any(ap == dir_path or dir_path in ap.parents for ap in active_paths):
+        return None
+
+    lower_parts = [p.lower() for p in dir_path.parts[:-1]]
+    parent_name = dir_path.parent.name.lower()
+
+    # 1. Explicit backup/trial naming on the `.app` itself
+    lower_name = dir_name.lower()
+    if any(tag in lower_name for tag in ("-backup.app", "-tested.app", "-rejected.app", "-diagnostic.app", "fixture.app", "probea.app", "probeb.app")):
+        return (
+            "Stale Backup / Diagnostic App Bundle (.app)",
+            f"Backup/diagnostic app bundle '{dir_name}'",
+        )
+
+    # 2. Inside Build/Products or signed/candidate/backup/work/archive/lab directories
+    if (
+        ("build" in lower_parts and "products" in lower_parts)
+        or any(anc in TRANSIENT_APP_ANCESTORS for anc in lower_parts)
+        or parent_name.startswith(("signed", "runner-", "llvc-", "phone", "debug-", "release-"))
+    ):
+        return (
+            "Detached Xcode / Agent Build Artifact (.app)",
+            f"Transient build artifact '{dir_name}' inside '{dir_path.parent.name}/'",
+        )
+
+    return None
+
 
 def classify_context_verified_dir(
     dir_path: Path,
     dir_name: str,
     include_node_modules: bool,
+    active_paths: Set[Path],
 ) -> Optional[Tuple[str, str]]:
     """
     Verify ambiguous directory names (`target`, `build`, `.build`, `Library`, `Temp`,
-    `Intermediate`, `wandb`, `node_modules`) using sibling manifest files so we NEVER
-    accidentally delete a source folder that happens to share a name.
+    `Intermediate`, `wandb`, `node_modules`, detached `.app`) using sibling manifest files
+    or ancestor context so source folders are NEVER accidentally deleted.
     """
     parent = dir_path.parent
+
+    # 0. Detached Xcode/Agent `.app` bundle inside work/archive/build/lab directories
+    app_match = is_transient_build_app_bundle(dir_path, dir_name, active_paths)
+    if app_match:
+        return app_match
 
     # 1. Rust Cargo or Java Maven `target/`
     if dir_name == "target":
@@ -339,9 +456,13 @@ def classify_context_verified_dir(
     if dir_name == ".build":
         if (parent / "Package.swift").exists() or any(parent.glob("*.xcodeproj")) or any(parent.glob("*.xcworkspace")):
             return ("SwiftPM Build Cache (.build/)", "Verified sibling Package.swift / Xcode project")
-        # Also match if it contains arm64-apple-macosx or x86_64-apple-macosx
-        if (dir_path / "arm64-apple-macosx").exists() or (dir_path / "checkouts").exists():
-            return ("SwiftPM Build Cache (.build/)", "Contains SwiftPM build layout")
+        if (
+            (dir_path / "arm64-apple-macosx").exists()
+            or (dir_path / "x86_64-apple-macosx").exists()
+            or (dir_path / "checkouts").exists()
+            or (dir_path / "DerivedData").exists()
+        ):
+            return ("SwiftPM / Xcode Build Cache (.build/)", "Contains SwiftPM/Xcode build layout")
 
     # 3. Gradle / Android / Flutter / CMake `build/`
     if dir_name == "build":
@@ -355,6 +476,8 @@ def classify_context_verified_dir(
             return ("Gradle / Flutter Build Output (build/)", "Verified sibling build.gradle / pubspec.yaml")
         if (dir_path / "CMakeCache.txt").exists() or (dir_path / "build.ninja").exists():
             return ("CMake / Ninja Build Directory (build/)", "Contains CMakeCache.txt / build.ninja")
+        if (dir_path / "Build" / "Products").exists() or (dir_path / "DerivedData").exists():
+            return ("Xcode Build Output Directory (build/)", "Contains Xcode Build/Products layout")
 
     # 4. Unity Engine `Library/`, `Temp/`, `Obj/`, `Logs/`
     if dir_name in {"Library", "Temp", "Obj", "Logs"}:
@@ -396,19 +519,33 @@ def classify_context_verified_dir(
 
 
 # ============================================================================
-# 5. REFERENCE GRAPH & VERSION RETENTION (LAYER 5 GUARDRAIL)
+# 5. REFERENCE GRAPH & VERSION / ITERATION RETENTION (GATES 04 & 05)
 # ============================================================================
 
-def collect_referenced_paths(root: Path) -> Set[Path]:
+FAST_SKIP_DIRS: Set[str] = (
+    PROTECTED_DIRS
+    | set(UNCONDITIONAL_CACHE_DIRS.keys())
+    | {
+        "node_modules", "venv", ".venv", "vendor", "Pods", "SourcePackages",
+        "checkouts", "linux-kernel", "sony-oss-fx3", "tree", "nflasha15-files",
+        "full-unpack-20261107", "before", "recovery", "Installations", "Backups",
+    }
+)
+
+
+def collect_referenced_paths(root: Path) -> Tuple[Set[Path], Set[str]]:
     """
-    Scan FCPXML (.fcpxml, .fcpxmld) and JSON/YAML manifest files to build a
-    set of referenced local file paths that MUST NOT be deleted.
+    Gate 04: Scan FCPXML (.fcpxml) and script/manifest files (.py, .sh, .json) to build a set of
+    referenced local file paths and basenames (e.g., `--source ...cpio`, `current.json` pointers)
+    that MUST NOT be deleted.
     """
-    referenced: Set[Path] = set()
+    referenced_paths: Set[Path] = set()
+    referenced_names: Set[str] = set()
+
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         dirnames[:] = [
             d for d in dirnames
-            if d not in UNCONDITIONAL_CACHE_DIRS and d not in {".git", "node_modules", "DerivedData", "target"}
+            if d not in FAST_SKIP_DIRS and not d.endswith((".app", ".saved-application", ".app.saved", ".xcresult", ".dSYM"))
         ]
         for fname in filenames:
             fpath = Path(dirpath) / fname
@@ -420,19 +557,103 @@ def collect_referenced_paths(root: Path) -> Set[Path]:
                         if src.startswith("file://"):
                             parsed = urllib.parse.urlparse(src)
                             decoded = urllib.parse.unquote(parsed.path)
+                            referenced_names.add(Path(decoded).name)
                             try:
-                                referenced.add(Path(decoded).resolve())
+                                referenced_paths.add(Path(decoded).resolve())
                             except OSError:
-                                referenced.add(Path(decoded))
+                                referenced_paths.add(Path(decoded))
                 except Exception:
                     pass
-    return referenced
+            elif fname.endswith((".py", ".sh")) or fname == "current.json":
+                try:
+                    if fpath.stat().st_size <= 256 * 1024:
+                        text = fpath.read_text(encoding="utf-8", errors="ignore")
+                        for m in re.finditer(r"([A-Za-z0-9_.\-]+\.(?:cpio|img|fdat|tar|gz|app|bin))", text):
+                            referenced_names.add(m.group(1))
+                except OSError:
+                    pass
+
+    return referenced_paths, referenced_names
 
 
 def version_sort_key(name: str) -> Tuple[int, ...]:
     """Extract numeric version tuple for sorting release/trial directories."""
     nums = [int(n) for n in re.findall(r"\d+", name)]
     return tuple(nums) if nums else (0,)
+
+
+def scan_pointer_governed_install_dirs(
+    root: Path,
+    keep_versions: int,
+    report: ScanReport,
+    seen_paths: Set[Path],
+) -> None:
+    """
+    Gate 05A: Detect installation transaction pools governed by a `current.json` pointer
+    (e.g., `PrismGrade/Installations` containing `current.json` + hundreds of UUID directories).
+    Retains the active UUID referenced in `current.json` + the newest `keep_versions` directories,
+    and reclaims all superseded historical UUID transaction directories.
+    """
+    uuid_re = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
+
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
+        candidate_parent = Path(dirpath)
+        if candidate_parent in seen_paths or any(p in seen_paths for p in candidate_parent.parents):
+            dirnames[:] = []
+            continue
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in PROTECTED_DIRS and d not in {"node_modules", "linux-kernel", "venv", ".venv"}
+            and not d.endswith((".app", ".saved-application", ".app.saved"))
+        ]
+
+        if "current.json" not in filenames:
+            continue
+
+        uuid_dirs = [
+            candidate_parent / d for d in list(dirnames)
+            if uuid_re.match(d) and not (candidate_parent / d).is_symlink()
+        ]
+        if len(uuid_dirs) <= keep_versions:
+            continue
+
+        active_tokens: Set[str] = set()
+        try:
+            raw_json = (candidate_parent / "current.json").read_text(encoding="utf-8", errors="ignore").strip()
+            active_tokens.add(raw_json.strip('"').strip("'"))
+            for m in uuid_re.finditer(raw_json):
+                active_tokens.add(m.group(0))
+        except OSError:
+            pass
+
+        sorted_dirs = sorted(
+            uuid_dirs,
+            key=lambda p: p.stat().st_mtime if p.exists() else 0.0,
+            reverse=True,
+        )
+        kept: Set[Path] = set(sorted_dirs[:keep_versions])
+        for d in sorted_dirs:
+            if d.name in active_tokens:
+                kept.add(d)
+
+        for d in sorted_dirs:
+            if d in kept:
+                seen_paths.add(d)
+                report.protected_notes.append(f"Retained active/latest installation UUID: {d}")
+            elif d not in seen_paths:
+                sz = get_path_size(d)
+                if sz > 0:
+                    seen_paths.add(d)
+                    report.candidates.append(
+                        CandidateItem(
+                            path=d,
+                            category="Superseded Installation Transactions",
+                            size_bytes=sz,
+                            reason=f"Historical UUID transaction superseded by current.json (kept newest {keep_versions} + active)",
+                            is_dir=True,
+                        )
+                    )
+        dirnames[:] = [d for d in dirnames if (candidate_parent / d) not in seen_paths]
 
 
 def scan_versioned_release_dirs(
@@ -442,17 +663,26 @@ def scan_versioned_release_dirs(
     seen_paths: Set[Path],
 ) -> None:
     """
-    Detect versioned build/release output directories (e.g., `releases/`, `dist-releases/`,
-    or directories containing multiple versioned build folders + an active pointer JSON/symlink)
+    Gate 05B: Detect versioned build/release output directories (e.g., `App-0.3.0-beta.1` .. `beta.27`)
     and retain the newest `keep_versions` + any actively linked version.
     """
-    for candidate_parent in root.rglob("*"):
-        if not candidate_parent.is_dir() or candidate_parent.is_symlink():
+    for dirpath, dirnames, _ in os.walk(root, topdown=True, followlinks=False):
+        candidate_parent = Path(dirpath)
+        if candidate_parent in seen_paths or any(p in seen_paths for p in candidate_parent.parents):
+            dirnames[:] = []
             continue
-        if any(p in seen_paths for p in candidate_parent.parents):
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in FAST_SKIP_DIRS and (candidate_parent / d) not in seen_paths
+        ]
+
+        subdirs = [
+            candidate_parent / d for d in dirnames
+            if re.search(r"v?\d+\.\d+\.\d+", d) and not (candidate_parent / d).is_symlink()
+        ]
+        if len(subdirs) <= keep_versions:
             continue
 
-        # Check if directory has an active install/release manifest JSON pointing to a current version
         active_refs: Set[str] = set()
         for jf in candidate_parent.glob("*.json"):
             try:
@@ -461,15 +691,6 @@ def scan_versioned_release_dirs(
             except OSError:
                 pass
 
-        # Group subdirectories that share a versioned naming prefix (e.g., App-0.3.0-beta.1 .. App-0.3.0-beta.27)
-        subdirs = [
-            d for d in candidate_parent.iterdir()
-            if d.is_dir() and not d.is_symlink() and re.search(r"v?\d+\.\d+\.\d+", d.name)
-        ]
-        if len(subdirs) <= keep_versions:
-            continue
-
-        # Group by base prefix before the version number
         groups: Dict[str, List[Path]] = {}
         for d in subdirs:
             m = re.match(r"^(.*?)(v?\d+\.\d+\.\d+.*)$", d.name)
@@ -492,6 +713,7 @@ def scan_versioned_release_dirs(
 
             for d in sorted_dirs:
                 if d in kept:
+                    seen_paths.add(d)
                     report.protected_notes.append(f"Retained recent/active versioned build: {d}")
                 elif d not in seen_paths:
                     sz = get_path_size(d)
@@ -508,6 +730,162 @@ def scan_versioned_release_dirs(
                         )
 
 
+def scan_iterative_build_files(
+    root: Path,
+    keep_versions: int,
+    min_age_seconds: float,
+    active_paths: Set[Path],
+    active_basenames: Set[str],
+    referenced_names: Set[str],
+    report: ScanReport,
+    seen_paths: Set[Path],
+) -> None:
+    """
+    Gate 05C: Detect large numbered iterative build/rootfs/VM image sequences in the same folder
+    (e.g., `guest-hybrid-fx6kernel-capid-grmreal1.cpio` .. `grmreal513-suhook.cpio` totaling 200+ GB).
+    """
+    iter_file_re = re.compile(r"^([A-Za-z0-9_.\-]*?[A-Za-z_\-])(\d+)(?:-[A-Za-z0-9_.\-]+)?(\.(?:cpio|img|fdat|tar|bin))$")
+    min_size_bytes = 20 * 1024 * 1024  # Only apply to large >= 20MB iterative images
+    safe_age_window = max(min_age_seconds, 1800.0)  # Always protect files modified in the last 30 mins
+
+    for dirpath, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
+        current_dir = Path(dirpath)
+        if current_dir in seen_paths or any(p in seen_paths for p in current_dir.parents):
+            dirnames[:] = []
+            continue
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in FAST_SKIP_DIRS and (current_dir / d) not in seen_paths
+            and not d.endswith((".app", ".saved-application", ".app.saved"))
+        ]
+
+        series_map: Dict[Tuple[str, str], List[Tuple[int, float, Path]]] = {}
+        for fname in filenames:
+            m = iter_file_re.match(fname)
+            if not m:
+                continue
+            fpath = current_dir / fname
+            if fpath in seen_paths or fpath.is_symlink():
+                continue
+            try:
+                st = fpath.stat()
+            except OSError:
+                continue
+            if st.st_size < min_size_bytes:
+                continue
+            prefix, num_str, ext = m.group(1), m.group(2), m.group(3)
+            series_map.setdefault((prefix, ext), []).append((int(num_str), st.st_mtime, fpath))
+
+        keep_count = max(keep_versions, 3)
+        for (prefix, ext), items in series_map.items():
+            if len(items) <= keep_count:
+                continue
+            items_sorted = sorted(items, key=lambda x: (x[0], x[1]), reverse=True)
+            kept_paths: Set[Path] = {x[2] for x in items_sorted[:keep_count]}
+
+            for num, mtime, fpath in items_sorted:
+                if (
+                    fpath in active_paths
+                    or fpath.name in active_basenames
+                    or fpath.name in referenced_names
+                    or is_recently_modified(fpath, safe_age_window)
+                ):
+                    kept_paths.add(fpath)
+
+            for num, mtime, fpath in items_sorted:
+                if fpath in kept_paths:
+                    seen_paths.add(fpath)
+                    report.protected_notes.append(f"Retained active/baseline/newest iterative image: {fpath.name}")
+                elif fpath not in seen_paths:
+                    sz = get_path_size(fpath)
+                    if sz > 0:
+                        seen_paths.add(fpath)
+                        report.candidates.append(
+                            CandidateItem(
+                                path=fpath,
+                                category="Superseded Iterative VM/Firmware Images",
+                                size_bytes=sz,
+                                reason=f"Superseded iteration #{num} in '{prefix}*{ext}' series (kept newest {keep_count} + referenced baselines)",
+                                is_dir=False,
+                            )
+                        )
+
+
+def scan_iterative_run_backups(
+    root: Path,
+    keep_versions: int,
+    report: ScanReport,
+    seen_paths: Set[Path],
+) -> None:
+    """
+    Gate 05D: Detect iterative test/device run directories (`runs/*-r1`, `runs/*-r2` .. `runs/*-r7`)
+    that stash multi-gigabyte `before/backup/{target-app,target-data,runner-app,runner-data}` and
+    `recovery/preserved-current` dumps.
+    """
+    run_re = re.compile(r"^(.*?)-r(\d+)$")
+
+    for dirpath, dirnames, _ in os.walk(root, topdown=True, followlinks=False):
+        current_dir = Path(dirpath)
+        if current_dir in seen_paths or any(p in seen_paths for p in current_dir.parents):
+            dirnames[:] = []
+            continue
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in PROTECTED_DIRS and d not in {"node_modules", "linux-kernel", "venv", ".venv"}
+            and not d.endswith((".app", ".saved-application", ".app.saved"))
+        ]
+        if current_dir.name != "runs":
+            continue
+
+        series: Dict[str, List[Tuple[int, float, Path]]] = {}
+        for d in list(dirnames):
+            m = run_re.match(d)
+            if not m:
+                continue
+            rpath = current_dir / d
+            if rpath.is_symlink() or rpath in seen_paths:
+                continue
+            try:
+                mtime = rpath.stat().st_mtime
+            except OSError:
+                mtime = 0.0
+            series.setdefault(m.group(1), []).append((int(m.group(2)), mtime, rpath))
+
+        for prefix, run_items in series.items():
+            if len(run_items) <= keep_versions:
+                continue
+            run_sorted = sorted(run_items, key=lambda x: (x[0], x[1]), reverse=True)
+            kept_runs = {x[2] for x in run_sorted[:keep_versions]}
+
+            for rnum, _, rpath in run_sorted:
+                if rpath in kept_runs:
+                    seen_paths.add(rpath)
+                    report.protected_notes.append(f"Retained newest test run state: {rpath}")
+                    continue
+                heavy_subdirs = [
+                    rpath / "before" / "backup",
+                    rpath / "recovery" / "preserved-current",
+                    rpath / "input",
+                    rpath / "ui",
+                    rpath / "tests",
+                ]
+                for hdir in heavy_subdirs:
+                    if hdir.exists() and hdir.is_dir() and hdir not in seen_paths:
+                        sz = get_path_size(hdir)
+                        if sz > 0:
+                            seen_paths.add(hdir)
+                            report.candidates.append(
+                                CandidateItem(
+                                    path=hdir,
+                                    category="Superseded Test Run State Backups",
+                                    size_bytes=sz,
+                                    reason=f"Redundant binary backup inside superseded run '{rpath.name}' (JSON/manifest receipts preserved)",
+                                    is_dir=True,
+                                )
+                            )
+        dirnames[:] = []
+
+
 # ============================================================================
 # 6. CONTENT-BASED SCRATCH DEDUPLICATION (SHA-256 FAST SIGNATURE)
 # ============================================================================
@@ -516,6 +894,8 @@ def scan_duplicate_scratch_files(
     root: Path,
     dedup_min_mb: float,
     referenced_paths: Set[Path],
+    referenced_names: Set[str],
+    active_paths: Set[Path],
     report: ScanReport,
     seen_paths: Set[Path],
 ) -> None:
@@ -534,11 +914,11 @@ def scan_duplicate_scratch_files(
         if current_dir in seen_paths or any(p in seen_paths for p in current_dir.parents):
             dirnames[:] = []
             continue
-        dirnames[:] = [d for d in dirnames if d not in PROTECTED_DIRS]
+        dirnames[:] = [d for d in dirnames if d not in FAST_SKIP_DIRS and (current_dir / d) not in seen_paths]
 
         for fname in filenames:
             fpath = current_dir / fname
-            if fpath in seen_paths or fpath.is_symlink():
+            if fpath in seen_paths or fpath.is_symlink() or fpath in active_paths or fname in referenced_names:
                 continue
             if fpath.suffix.lower() in PROTECTED_MODEL_EXTS:
                 continue
@@ -555,10 +935,10 @@ def scan_duplicate_scratch_files(
     for sig, paths in sig_map.items():
         if len(paths) < 2:
             continue
-        # Sort so canonical (non-scratch, shorter path, or referenced) comes first
+
         def canonical_priority(p: Path) -> Tuple[int, int, str]:
             try:
-                is_ref = 0 if p.resolve() in referenced_paths else 1
+                is_ref = 0 if (p.resolve() in referenced_paths or p.name in referenced_names) else 1
             except OSError:
                 is_ref = 1
             in_scratch = 1 if any(k in part.lower() for part in p.parts for k in scratch_keywords) else 0
@@ -568,12 +948,10 @@ def scan_duplicate_scratch_files(
         canonical = sorted_paths[0]
         for dup in sorted_paths[1:]:
             try:
-                if dup.resolve() in referenced_paths:
+                if dup.resolve() in referenced_paths or dup.name in referenced_names or dup in active_paths:
                     continue
             except OSError:
                 pass
-            # Only auto-clean duplicates if they reside in a scratch/temp/test/work folder
-            # or have `.copy` / `copy` in their name
             dup_parts_lower = [part.lower() for part in dup.parts]
             if any(k in part for part in dup_parts_lower for k in scratch_keywords) or "copy" in dup.name.lower():
                 sz = get_path_size(dup)
@@ -599,13 +977,25 @@ def scan_workspace(
     keep_versions: int = 2,
     min_age_hours: float = 0.0,
     dedup_scratch_mb: float = 25.0,
+    active_paths: Optional[Set[Path]] = None,
+    active_basenames: Optional[Set[str]] = None,
 ) -> ScanReport:
     report = ScanReport(root=root)
     seen_paths: Set[Path] = set()
     min_age_seconds = min_age_hours * 3600.0
-    referenced_paths = collect_referenced_paths(root)
-    if referenced_paths:
-        report.protected_notes.append(f"Protected {len(referenced_paths)} active media/manifest-referenced asset(s)")
+    if active_paths is None or active_basenames is None:
+        active_paths, active_basenames = collect_active_process_paths()
+
+    referenced_paths, referenced_names = collect_referenced_paths(root)
+    if referenced_paths or referenced_names:
+        report.protected_notes.append(
+            f"Protected {len(referenced_paths) + len(referenced_names)} active media/script-referenced asset(s)"
+        )
+
+    # Pre-Pass (Gate 05): Pointer-governed UUID pools & iterative test-run backups first
+    # so active/newest runs & UUIDs are added to `seen_paths` and protected from inner bundle pruning
+    scan_pointer_governed_install_dirs(root, keep_versions, report, seen_paths)
+    scan_iterative_run_backups(root, keep_versions=keep_versions, report=report, seen_paths=seen_paths)
 
     # Pass 1: Walk directory tree for unconditional & context-verified caches
     for dirpath, dirnames, filenames in os.walk(root, topdown=True, followlinks=False):
@@ -639,11 +1029,17 @@ def scan_workspace(
             d_path = current_dir / d
             if d_path.is_symlink():
                 continue
+            if d_path in seen_paths:
+                continue
 
-            # Layer 1 & 2: Never traverse or delete Protected VCS / AI Agent Memory Directories
+            # Gate 01 & 02 & 03: Never traverse or delete Protected VCS / AI Agent Memory Directories
             if d in PROTECTED_DIRS:
-                if d in {".agents", ".claude", ".codex", ".cursor", ".windsurf", ".cline", ".roo", "memory", "reports"}:
+                if d in {".agents", ".claude", ".codex", ".cursor", ".windsurf", ".cline", ".roo", "memory", "docs"}:
                     report.protected_notes.append(f"Protected AI Agent Memory/Config: {d_path}")
+                continue
+
+            # Fast skip huge OSS kernel / vendor trees that don't contain build caches
+            if d in {"linux-kernel", "sony-oss-fx3"} and not include_node_modules:
                 continue
 
             matched_category: Optional[str] = None
@@ -654,7 +1050,7 @@ def scan_workspace(
                 matched_category = UNCONDITIONAL_CACHE_DIRS[d]
                 matched_reason = f"Standard disposable cache/build directory '{d}'"
 
-            # Check prefix patterns (e.g., cmake-build-*, bazel-*)
+            # Check prefix patterns (e.g., cmake-build-*, bazel-*, DerivedData-*, derived-simulator*)
             if not matched_category:
                 for prefix, cat in PREFIX_CACHE_DIRS:
                     if d.startswith(prefix):
@@ -662,22 +1058,22 @@ def scan_workspace(
                         matched_reason = f"Matches build directory prefix '{prefix}*'"
                         break
 
-            # Check suffix patterns (e.g., *.xcresult, *.dSYM, *.trace)
+            # Check suffix patterns (e.g., *.xcresult, *.dSYM, *.saved-application, *UITests-Runner.app)
             if not matched_category:
                 for suffix, cat in SUFFIX_CACHE_DIRS:
                     if d.endswith(suffix):
                         matched_category = cat
-                        matched_reason = f"Matches diagnostic/symbol bundle suffix '*{suffix}'"
+                        matched_reason = f"Matches diagnostic/backup/runner bundle suffix '*{suffix}'"
                         break
 
-            # Layer 4: Context-verified build directories (target/, build/, .build/, Library/, wandb/, node_modules/)
+            # Gate 04: Context-verified build directories & detached build `.app` bundles
             if not matched_category:
-                verified = classify_context_verified_dir(d_path, d, include_node_modules)
+                verified = classify_context_verified_dir(d_path, d, include_node_modules, active_paths)
                 if verified:
                     matched_category, matched_reason = verified
 
             if matched_category and matched_reason:
-                # Layer 3: Active process / modification age check
+                # Gate 01: Active process / modification age check
                 if is_recently_modified(d_path, min_age_seconds):
                     report.skipped_active.append(f"Skipped recently modified (<{min_age_hours}h): {d_path}")
                     continue
@@ -702,10 +1098,10 @@ def scan_workspace(
         # Inspect individual files in non-pruned directories
         for fname in filenames:
             fpath = current_dir / fname
-            if fpath.is_symlink() or fpath in seen_paths:
+            if fpath.is_symlink() or fpath in seen_paths or fpath in active_paths:
                 continue
 
-            if fname in PROTECTED_FILES:
+            if fname in PROTECTED_FILES or fname in referenced_names:
                 continue
 
             ext = fpath.suffix.lower()
@@ -730,7 +1126,6 @@ def scan_workspace(
             elif ext == ".raw" and any(
                 k in fname.lower() for k in ("dump", "probe", "debug", "capture", "temp", "out_")
             ):
-                # Distinguish raw framebuffer dumps from camera RAW photos (.ARW/.CR3/.NEF/.DNG are never .raw, and we require debug keywords)
                 file_cat = "Raw Debug Framebuffer Dump (.raw)"
                 file_reason = "Uncompressed debug/framebuffer dump matching dump/probe/capture naming"
 
@@ -750,38 +1145,315 @@ def scan_workspace(
                         )
                     )
 
-    # Pass 2: Versioned release build retention (keep top N newest + active)
+    # Pass 2B: Semantic versioned release build retention
     scan_versioned_release_dirs(root, keep_versions, report, seen_paths)
 
+    # Pass 2C: Iterative numbered VM/firmware rootfs images (`.cpio`, `.img`, `.fdat`)
+    scan_iterative_build_files(
+        root,
+        keep_versions=keep_versions,
+        min_age_seconds=min_age_seconds,
+        active_paths=active_paths,
+        active_basenames=active_basenames,
+        referenced_names=referenced_names,
+        report=report,
+        seen_paths=seen_paths,
+    )
+
     # Pass 3: Fast SHA-256 duplicate scratch/test artifact detection
-    scan_duplicate_scratch_files(root, dedup_scratch_mb, referenced_paths, report, seen_paths)
+    scan_duplicate_scratch_files(
+        root,
+        dedup_min_mb=dedup_scratch_mb,
+        referenced_paths=referenced_paths,
+        referenced_names=referenced_names,
+        active_paths=active_paths,
+        report=report,
+        seen_paths=seen_paths,
+    )
 
     return report
 
 
 # ============================================================================
-# 8. EXECUTION & REPORTING
+# 8. XCODE SYSTEM CACHE, LAUNCHSERVICES & SPOTLIGHT HYGIENE (macOS)
 # ============================================================================
 
-def execute_cleanup(report: ScanReport) -> Tuple[int, int, List[str]]:
+def scan_xcode_system_caches(include_device_support: bool = False) -> ScanReport:
+    """
+    Scan system-level Xcode & Simulator caches under `~/Library/Developer` and `~/Library/Caches`:
+      - `~/Library/Developer/Xcode/DerivedData`
+      - `~/Library/Developer/CoreSimulator/Caches` & `Temp`
+      - `~/Library/Developer/CoreSimulator/Devices/*/data/Library/Caches/com.apple.coresymbolicationd`
+      - `~/Library/Developer/XCTestDevices` & `XCPGDevices`
+      - Orphaned `~/Library/Developer/CoreSimulator/*-clones` parallel test directories
+      - `~/Library/Caches/com.apple.dt.Xcode` & `~/Library/Caches/org.swift.swiftpm`
+      - Optional (`--clean-device-support`): `~/Library/Developer/Xcode/*OS DeviceSupport`
+    """
+    home = Path.home()
+    dev_root = home / "Library" / "Developer"
+    report = ScanReport(root=dev_root)
+
+    targets: List[Tuple[Path, str, str]] = [
+        (dev_root / "Xcode" / "DerivedData", "Xcode System DerivedData", "Regenerable Xcode intermediate builds & indexes"),
+        (dev_root / "CoreSimulator" / "Caches", "CoreSimulator System Caches", "Regenerable iOS Simulator runtime/dyld caches"),
+        (dev_root / "CoreSimulator" / "Temp", "CoreSimulator Temp Files", "Temporary iOS Simulator files"),
+        (dev_root / "XCTestDevices", "Orphaned XCTest Simulator Clones", "Disposable parallel test simulator clones"),
+        (dev_root / "XCPGDevices", "Orphaned Playground Simulator Clones", "Disposable Swift Playground simulator clones"),
+        (home / "Library" / "Caches" / "com.apple.dt.Xcode", "Xcode Application Cache", "Regenerable com.apple.dt.Xcode cache"),
+        (home / "Library" / "Caches" / "org.swift.swiftpm", "SwiftPM Global Cache", "Regenerable Swift Package Manager cache"),
+    ]
+
+    if include_device_support:
+        for ds_name in ("iOS DeviceSupport", "watchOS DeviceSupport", "tvOS DeviceSupport", "visionOS DeviceSupport"):
+            targets.append(
+                (
+                    dev_root / "Xcode" / ds_name,
+                    f"Xcode {ds_name} Symbols",
+                    "Extracted device debug symbols (regenerated automatically when device connects)",
+                )
+            )
+
+    for tpath, cat, reason in targets:
+        if tpath.exists():
+            sz = get_path_size(tpath)
+            if sz > 0:
+                report.candidates.append(
+                    CandidateItem(path=tpath, category=cat, size_bytes=sz, reason=reason, is_dir=True)
+                )
+
+    # Also detect orphaned `*-clones` directories and bloated `com.apple.coresymbolicationd` inside CoreSimulator
+    coresim_dir = dev_root / "CoreSimulator"
+    if coresim_dir.exists():
+        for child in coresim_dir.iterdir():
+            if child.is_dir() and child.name.endswith("-clones"):
+                sz = get_path_size(child)
+                report.candidates.append(
+                    CandidateItem(
+                        path=child,
+                        category="Orphaned Simulator Clone Set",
+                        size_bytes=sz,
+                        reason=f"Orphaned agent simulator clone directory '{child.name}'",
+                        is_dir=True,
+                    )
+                )
+        devices_dir = coresim_dir / "Devices"
+        if devices_dir.exists():
+            for sym_cache in devices_dir.glob("*/data/Library/Caches/com.apple.coresymbolicationd"):
+                if sym_cache.is_dir():
+                    sz = get_path_size(sym_cache)
+                    if sz > 0:
+                        report.candidates.append(
+                            CandidateItem(
+                                path=sym_cache,
+                                category="Simulator CoreSymbolication Cache",
+                                size_bytes=sz,
+                                reason="Regenerable simulator symbolication cache (com.apple.coresymbolicationd)",
+                                is_dir=True,
+                            )
+                        )
+
+    return report
+
+
+def clean_launchservices_ghost_apps(execute: bool, extra_unregistered_paths: Optional[List[Path]] = None) -> List[str]:
+    """
+    Scan macOS LaunchServices (`lsregister -dump`) for ghost/deleted `.app` or `.pluginkit`
+    bundles and transient build artifacts (in `DerivedData`, `CoreSimulator`, `.Trashes`,
+    `work/`, `.build/`, `Archive/`, `Worktrees/`, `TaskHistory/`, `Builds/`, `Phayen-lab/`,
+    `PrismGrade/Installations`, `PrismGrade/Backups`), unregistering them via `lsregister -u`
+    and running `lsregister -gc` so broken `🚫` icons vanish from Launchpad / Applications.
+    """
+    notes: List[str] = []
+    if not os.path.exists(LSREGISTER_PATH):
+        return notes
+
+    transient_markers = (
+        "/DerivedData/",
+        "/CoreSimulator/Devices/",
+        "/.Trashes/",
+        "/.Trash/",
+        "/AI/Archive/",
+        "/AI/Codex/",
+        "/AI/Data/",
+        "/AI/Orca/Worktrees/",
+        "/AI/Claude/Worktrees/",
+        "/Application Support/PrismGrade/Installations/",
+        "/Application Support/PrismGrade/LabInstallations/",
+        "/Application Support/PrismGrade/Backups/",
+        "/work/",
+        "/.build/",
+        ".saved-application",
+        ".saved-service",
+        ".app.saved",
+        "UITests-Runner.app",
+        "Tests-Runner.app",
+    )
+
+    to_unregister: Set[str] = set()
+    try:
+        dump_out = subprocess.check_output([LSREGISTER_PATH, "-dump"], text=True, errors="ignore")
+        for line in dump_out.splitlines():
+            if not line.startswith("path:"):
+                continue
+            m = re.match(r"^path:\s+(.*?)\s+\(0x[0-9a-fA-F]+\)\s*$", line)
+            if not m:
+                continue
+            p_str = m.group(1).strip()
+            if not p_str or p_str.startswith(("/System/", "/Library/")):
+                continue
+            if "/Library/Daemon Containers/" in p_str:
+                continue
+            if any(marker in p_str for marker in transient_markers) or not os.path.exists(p_str):
+                to_unregister.add(p_str)
+    except Exception as exc:
+        notes.append(f"LaunchServices scan note: {exc}")
+
+    if not to_unregister:
+        notes.append("LaunchServices: 0 ghost/build-artifact app registrations found")
+        return notes
+
+    if not execute:
+        notes.append(f"Dry-run: would unregister {len(to_unregister)} ghost/build-artifact bundle(s) from macOS LaunchServices")
+        for sample in sorted(to_unregister)[:8]:
+            notes.append(f"  - [GHOST APP] {sample}")
+        if len(to_unregister) > 8:
+            notes.append(f"  - ... and {len(to_unregister) - 8} more")
+        return notes
+
+    unregistered_ok = 0
+    for p_str in sorted(to_unregister):
+        try:
+            subprocess.run([LSREGISTER_PATH, "-u", p_str], capture_output=True, text=True, timeout=5)
+            unregistered_ok += 1
+        except Exception:
+            pass
+
+    try:
+        subprocess.run([LSREGISTER_PATH, "-gc"], capture_output=True, text=True, timeout=15)
+    except Exception:
+        pass
+
+    notes.append(f"LaunchServices: Unregistered {unregistered_ok} ghost/build-artifact bundle(s) and ran `lsregister -gc`")
+    return notes
+
+
+def apply_spotlight_shields(roots: List[Path], execute: bool) -> List[str]:
+    """
+    Place `.metadata_never_index` markers inside transient build/worktree/archive directories
+    so Spotlight and Agent indexers skip intermediate build trees.
+    """
+    shield_notes: List[str] = []
+    shield_subdirs = ("work", "DerivedData", "Builds", "Archive", "Worktrees", "TaskHistory", "Phayen-lab")
+
+    target_dirs: Set[Path] = set()
+    for r in roots:
+        if r.name in shield_subdirs and r.is_dir():
+            target_dirs.add(r)
+        for sub in shield_subdirs:
+            candidate = r / sub
+            if candidate.is_dir():
+                target_dirs.add(candidate)
+        try:
+            for child in r.iterdir():
+                if child.is_dir() and not child.is_symlink():
+                    if child.name in shield_subdirs:
+                        target_dirs.add(child)
+                    work_sub = child / "work"
+                    if work_sub.is_dir():
+                        target_dirs.add(work_sub)
+        except OSError:
+            pass
+
+    created = 0
+    for td in sorted(target_dirs):
+        marker = td / ".metadata_never_index"
+        if not marker.exists():
+            if execute:
+                try:
+                    marker.touch()
+                    created += 1
+                except OSError:
+                    pass
+            else:
+                created += 1
+
+    if created > 0:
+        prefix = "Created" if execute else "Dry-run: would create"
+        shield_notes.append(f"{prefix} `.metadata_never_index` shield in {created} build/worktree directory(s)")
+    return shield_notes
+
+
+# ============================================================================
+# 9. EXECUTION & REPORTING
+# ============================================================================
+
+def resolve_trash_dir(target: Path) -> Path:
+    """Resolve same-volume Trash directory (.Trashes/<uid> on external volumes, ~/.Trash on internal disk)."""
+    s_str = str(target)
+    uid = os.getuid()
+    if s_str.startswith("/Volumes/"):
+        parts = Path(s_str).parts
+        if len(parts) >= 3:
+            vol_root = Path("/") / parts[1] / parts[2]
+            trash_dir = vol_root / ".Trashes" / str(uid) / "agent-slim"
+            try:
+                trash_dir.mkdir(parents=True, exist_ok=True)
+                return trash_dir
+            except OSError:
+                pass
+    home_trash = Path.home() / ".Trash" / "agent-slim"
+    home_trash.mkdir(parents=True, exist_ok=True)
+    return home_trash
+
+
+def remove_path_permanently(target: Path) -> None:
+    """Permanently delete a directory or file to reclaim disk space immediately."""
+    if target.is_symlink() or target.is_file():
+        target.unlink()
+    elif target.is_dir():
+        shutil.rmtree(target)
+
+
+def execute_cleanup(report: ScanReport, use_trash: bool = False) -> Tuple[int, int, List[Path], List[str]]:
     deleted_bytes = 0
     deleted_count = 0
+    removed_paths: List[Path] = []
     errors: List[str] = []
+    ts = int(time.time())
 
-    for item in report.candidates:
+    for idx, item in enumerate(report.candidates):
         try:
             if not item.path.exists() and not item.path.is_symlink():
                 continue
-            if item.is_dir:
-                shutil.rmtree(item.path)
+            if use_trash:
+                trash_base = resolve_trash_dir(item.path)
+                dest = trash_base / f"{ts}-{idx}-{item.path.name}"
+                shutil.move(str(item.path), str(dest))
             else:
-                item.path.unlink()
+                remove_path_permanently(item.path)
             deleted_bytes += item.size_bytes
             deleted_count += 1
+            removed_paths.append(item.path)
         except Exception as exc:
             errors.append(f"{item.path}: {exc}")
 
-    return deleted_bytes, deleted_count, errors
+    # Also purge any legacy `.Trashes/<uid>/agent-slim` or `~/.Trash/agent-slim` staging folders when not using `--trash`
+    if not use_trash:
+        uid = os.getuid()
+        legacy_trashes = [
+            Path.home() / ".Trash" / "agent-slim",
+            Path("/Volumes/KAFU2T/.Trashes") / str(uid) / "agent-slim",
+        ]
+        for lt in legacy_trashes:
+            try:
+                if lt.exists():
+                    sz = get_path_size(lt)
+                    shutil.rmtree(lt)
+                    deleted_bytes += sz
+            except OSError:
+                pass
+
+    return deleted_bytes, deleted_count, removed_paths, errors
 
 
 def clean_unavailable_ios_simulators(execute: bool) -> str:
@@ -802,10 +1474,10 @@ def clean_unavailable_ios_simulators(execute: bool) -> str:
 
 
 def print_summary(reports: List[ScanReport], execute: bool, top_n: int = 25) -> None:
-    mode_str = "EXECUTION MODE (DELETING FILES)" if execute else "DRY-RUN MODE (NO FILES DELETED)"
-    print("=" * 84)
+    mode_str = "EXECUTION MODE (RECLAIMING DISK SPACE)" if execute else "DRY-RUN MODE (NO FILES DELETED)"
+    print("=" * 88)
     print(f"  agent-slim v{VERSION} — {mode_str}")
-    print("=" * 84)
+    print("=" * 88)
 
     grand_total = 0
     category_totals: Dict[str, int] = {}
@@ -832,48 +1504,60 @@ def print_summary(reports: List[ScanReport], execute: bool, top_n: int = 25) -> 
             category_counts[c.category] = category_counts.get(c.category, 0) + 1
             all_candidates.append(c)
 
-    print("\n" + "-" * 84)
+    print("\n" + "-" * 88)
     print("  Breakdown by Stack / Category")
-    print("-" * 84)
+    print("-" * 88)
     for cat, sz in sorted(category_totals.items(), key=lambda x: x[1], reverse=True):
         cnt = category_counts[cat]
-        print(f"  {cat:<48} {cnt:>6} item(s)   {format_bytes(sz):>12}")
+        print(f"  {cat:<52} {cnt:>6} item(s)   {format_bytes(sz):>12}")
 
     if all_candidates:
-        print("\n" + "-" * 84)
+        print("\n" + "-" * 88)
         print(f"  Top {min(top_n, len(all_candidates))} Largest Reclaimable Targets")
-        print("-" * 84)
+        print("-" * 88)
         for item in sorted(all_candidates, key=lambda x: x.size_bytes, reverse=True)[:top_n]:
             kind = "DIR " if item.is_dir else "FILE"
             print(f"  [{kind}] {format_bytes(item.size_bytes):>10}  {item.path}")
             print(f"         └─ {item.category}: {item.reason}")
 
-    print("\n" + "=" * 84)
+    print("\n" + "=" * 88)
     print(f"  TOTAL RECLAIMABLE SPACE: {format_bytes(grand_total)} across {len(all_candidates)} item(s)")
     if not execute:
-        print("  Tip: Re-run with `--execute` to permanently delete these items.")
-    print("=" * 84)
+        print("  Tip: Re-run with `--execute` (or `clean`) to reclaim this space.")
+    print("=" * 88)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="agent-slim",
         description=(
-            "Universal AI Agent & Multi-Stack Workspace Deep Cleaner. "
+            "Universal AI Agent, Xcode & Multi-Stack Workspace Deep Cleaner. "
             "Reclaims 50%–95% of bloated project disk space across Web, Python/AI/ML, "
-            "Rust/C++/Go, Xcode/Swift/Android, Unity/Unreal/Godot, and Media stacks while "
-            "strictly protecting Git state, uncommitted code, and AI Agent memory."
+            "Rust/C++/Go/VM Labs, Xcode/Swift/Android, Unity/Unreal/Godot, and Media stacks while "
+            "strictly protecting Git state, uncommitted code, active processes, and AI Agent memory."
         ),
     )
     parser.add_argument(
         "paths",
-        nargs="+",
-        help="One or more project, worktree, or parent workspace directories to scan.",
+        nargs="*",
+        help="Optional mode (`scan` or `clean`) followed by one or more workspace directories to scan.",
+    )
+    parser.add_argument(
+        "--root",
+        action="append",
+        dest="roots",
+        default=[],
+        help="Workspace directory to scan (can be specified multiple times; alias for positional paths).",
     )
     parser.add_argument(
         "--execute",
         action="store_true",
-        help="Perform actual deletion (default is safe dry-run mode).",
+        help="Perform actual deletion (default is safe dry-run mode unless `clean` subcommand is used).",
+    )
+    parser.add_argument(
+        "--trash",
+        action="store_true",
+        help="Move items to system Trash instead of permanent deletion.",
     )
     parser.add_argument(
         "--include-node-modules",
@@ -882,9 +1566,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--keep-versions",
+        "--keep-latest-release",
         type=int,
         default=2,
-        help="Number of latest versioned release builds to retain per group (default: 2).",
+        dest="keep_versions",
+        help="Number of latest versioned/iterative builds to retain per group (default: 2).",
     )
     parser.add_argument(
         "--min-age-hours",
@@ -901,7 +1587,27 @@ def main() -> int:
     parser.add_argument(
         "--clean-simulators",
         action="store_true",
-        help="Also run `xcrun simctl delete unavailable` on macOS to purge orphaned iOS Simulator runtimes.",
+        help="Run `xcrun simctl delete unavailable` on macOS to purge orphaned iOS Simulator runtimes.",
+    )
+    parser.add_argument(
+        "--clean-xcode",
+        action="store_true",
+        help="Also scan and clean system-level Xcode caches (~/Library/Developer/Xcode/DerivedData, CoreSimulator Caches/Clones, XCTestDevices, SwiftPM cache).",
+    )
+    parser.add_argument(
+        "--clean-device-support",
+        action="store_true",
+        help="When used with --clean-xcode, also clean ~/Library/Developer/Xcode/*OS DeviceSupport symbol caches.",
+    )
+    parser.add_argument(
+        "--clean-launchservices",
+        action="store_true",
+        help="Unregister ghost/deleted/build-artifact `.app` bundles from macOS LaunchServices (`lsregister -u` & `-gc`).",
+    )
+    parser.add_argument(
+        "--shield-spotlight",
+        action="store_true",
+        help="Create `.metadata_never_index` markers in transient build/worktree directories.",
     )
     parser.add_argument(
         "--report-json",
@@ -910,82 +1616,129 @@ def main() -> int:
         help="Optional file path to export a machine-readable JSON audit report.",
     )
     parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON report to stdout.",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"agent-slim {VERSION}",
     )
 
     args = parser.parse_args()
-    reports: List[ScanReport] = []
 
-    for raw_path in args.paths:
+    # Support optional leading `scan` / `clean` subcommands from README examples
+    raw_Input_paths = list(args.paths)
+    if raw_Input_paths and raw_Input_paths[0] in {"scan", "clean"}:
+        cmd = raw_Input_paths.pop(0)
+        if cmd == "clean":
+            args.execute = True
+    raw_Input_paths.extend(args.roots)
+
+    if not raw_Input_paths and not args.clean_xcode and not args.clean_launchservices:
+        parser.error("Please provide at least one workspace path (or `--root PATH`, `--clean-xcode`, `--clean-launchservices`).")
+
+    active_paths, active_basenames = collect_active_process_paths()
+    reports: List[ScanReport] = []
+    resolved_roots: List[Path] = []
+
+    for raw_path in raw_Input_paths:
         p = Path(raw_path).expanduser().resolve()
         if not p.exists():
             print(f"[WARN] Path does not exist, skipping: {p}", file=sys.stderr)
             continue
+        resolved_roots.append(p)
         rep = scan_workspace(
             root=p,
             include_node_modules=args.include_node_modules,
             keep_versions=args.keep_versions,
             min_age_hours=args.min_age_hours,
             dedup_scratch_mb=args.dedup_scratch_mb,
+            active_paths=active_paths,
+            active_basenames=active_basenames,
         )
         reports.append(rep)
 
-    print_summary(reports, execute=args.execute)
+    if args.clean_xcode:
+        xcode_rep = scan_xcode_system_caches(include_device_support=args.clean_device_support)
+        reports.append(xcode_rep)
 
-    if args.clean_simulators:
+    if not args.json:
+        print_summary(reports, execute=args.execute)
+
+    if args.clean_simulators or args.clean_xcode:
         sim_msg = clean_unavailable_ios_simulators(execute=args.execute)
-        print(f"\n[iOS Simulators] {sim_msg}")
+        if not args.json:
+            print(f"\n[iOS Simulators] {sim_msg}")
 
     total_reclaimed = 0
     total_deleted_items = 0
+    all_removed_paths: List[Path] = []
     all_errors: List[str] = []
 
     if args.execute:
         for rep in reports:
-            reclaimed, count, errs = execute_cleanup(rep)
+            reclaimed, count, removed_paths, errs = execute_cleanup(rep, use_trash=args.trash)
             total_reclaimed += reclaimed
             total_deleted_items += count
+            all_removed_paths.extend(removed_paths)
             all_errors.extend(errs)
+        if not args.json:
+            print("\n" + "=" * 88)
+            print(f"  CLEANUP COMPLETE: Reclaimed {format_bytes(total_reclaimed)} ({total_deleted_items} items removed)")
+            if all_errors:
+                print(f"  Warnings/Errors ({len(all_errors)}):")
+                for err in all_errors[:10]:
+                    print(f"    - {err}")
+            print("=" * 88)
 
-        print("\n" + "=" * 84)
-        print(f"  CLEANUP COMPLETE: Reclaimed {format_bytes(total_reclaimed)} ({total_deleted_items} items removed)")
-        if all_errors:
-            print(f"  Warnings/Errors ({len(all_errors)}):")
-            for err in all_errors[:10]:
-                print(f"    - {err}")
-        print("=" * 84)
+    if args.clean_launchservices or (args.execute and any(p.name.endswith(".app") for p in all_removed_paths)):
+        ls_notes = clean_launchservices_ghost_apps(execute=args.execute, extra_unregistered_paths=all_removed_paths)
+        if not args.json:
+            for note in ls_notes:
+                print(f"[LaunchServices] {note}")
+
+    if args.shield_spotlight and resolved_roots:
+        shield_notes = apply_spotlight_shields(resolved_roots, execute=args.execute)
+        if not args.json:
+            for note in shield_notes:
+                print(f"[Spotlight Shield] {note}")
+
+    payload = {
+        "version": VERSION,
+        "executed": args.execute,
+        "total_reclaimable_bytes": sum(r.total_bytes for r in reports),
+        "total_reclaimed_bytes": total_reclaimed if args.execute else 0,
+        "workspaces": [
+            {
+                "root": str(r.root),
+                "reclaimable_bytes": r.total_bytes,
+                "protected_notes": sorted(set(r.protected_notes)),
+                "skipped_active": r.skipped_active,
+                "candidates": [
+                    {
+                        "path": str(c.path),
+                        "category": c.category,
+                        "size_bytes": c.size_bytes,
+                        "reason": c.reason,
+                        "is_dir": c.is_dir,
+                    }
+                    for c in r.candidates
+                ],
+            }
+            for r in reports
+        ],
+    }
 
     if args.report_json:
         out_path = Path(args.report_json).expanduser().resolve()
-        payload = {
-            "version": VERSION,
-            "executed": args.execute,
-            "total_reclaimable_bytes": sum(r.total_bytes for r in reports),
-            "total_reclaimed_bytes": total_reclaimed if args.execute else 0,
-            "workspaces": [
-                {
-                    "root": str(r.root),
-                    "reclaimable_bytes": r.total_bytes,
-                    "protected_notes": sorted(set(r.protected_notes)),
-                    "skipped_active": r.skipped_active,
-                    "candidates": [
-                        {
-                            "path": str(c.path),
-                            "category": c.category,
-                            "size_bytes": c.size_bytes,
-                            "reason": c.reason,
-                            "is_dir": c.is_dir,
-                        }
-                        for c in r.candidates
-                    ],
-                }
-                for r in reports
-            ],
-        }
         out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"\n[JSON Report] Written to {out_path}")
+        if not args.json:
+            print(f"\n[Report] Exported JSON audit report to: {out_path}")
+
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
 
     return 0
 
