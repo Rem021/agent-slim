@@ -60,7 +60,7 @@ python3 scripts/agent_slim.py scan --root ~/Projects --clean-xcode --clean-launc
 Execute permanent cleanup after reviewing the audit report (enforces all 5 safety gates and unregisters ghost `.app` icons from macOS Launchpad):
 
 ```bash
-python3 scripts/agent_slim.py clean --root ~/Projects --keep-latest-release 2 --clean-xcode --clean-device-support --clean-launchservices --shield-spotlight
+python3 scripts/agent_slim.py clean --root ~/Projects --keep-latest-release 2 --clean-xcode --clean-device-support --clean-orphans --clean-launchservices --shield-spotlight
 ```
 
 ### JSON Report for Automation
@@ -87,6 +87,18 @@ agent-slim/
 
 ---
 
-## 5. License
+## 5. Open-Source Rule Attributions & Credits
+
+`agent-slim` integrates and extends orphan-detection and build-hygiene rules inspired by leading open-source projects:
+
+- **[`alienator88/Pearcleaner`](https://github.com/alienator88/Pearcleaner)**: `~/Library` & `/Library` orphan scan locations and `LaunchAgents` target inspection.
+- **[`tw93/Mole`](https://github.com/tw93/Mole)**: Bundle ID attribution over fuzzy name matching, macOS TCC / Sandbox (`containermanagerd`) boundary protection, and desktop `*-updater` staging cleanup.
+- **[`momenbasel/PureMac`](https://github.com/momenbasel/PureMac)**, **[`slow-coding/fullcleaner`](https://github.com/slow-coding/fullcleaner)** & **[`Alyetama/Sweep`](https://github.com/Alyetama/Sweep)**: Multi-signal `LaunchServices` + `pkgutil` + Apple Developer `TeamID` cross-referencing for `Containers` and `Group Containers`.
+- **[`jithin-sabu/purge-app`](https://github.com/jithin-sabu/purge-app)** & **Homebrew Cask `zap`**: Deterministic per-product `Application Support` verification.
+- **[`tbillington/kondo`](https://github.com/tbillington/kondo)**, **[`voidcosmos/npkill`](https://github.com/voidcosmos/npkill)**, **[`mac-cleanup/mac-cleanup-py`](https://github.com/mac-cleanup/mac-cleanup-py)** & **[`brege/dil`](https://github.com/brege/dil)**: Anchor-file verification (`Cargo.toml`, `Package.swift`, `pom.xml`, `build.gradle`, `CMakeLists.txt`) and global package cache hygiene.
+
+---
+
+## 6. License
 
 Released under the [MIT License](./LICENSE).

@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 
 LSREGISTER_PATH = (
     "/System/Library/Frameworks/CoreServices.framework/Frameworks/"
@@ -676,9 +676,10 @@ def scan_versioned_release_dirs(
             if d not in FAST_SKIP_DIRS and (candidate_parent / d) not in seen_paths
         ]
 
+        ver_pattern = re.compile(r"^(.*?)(v?\d+\.\d+\.\d+.*|(?:beta|rc|alpha)\d+.*)$", re.IGNORECASE)
         subdirs = [
             candidate_parent / d for d in dirnames
-            if re.search(r"v?\d+\.\d+\.\d+", d) and not (candidate_parent / d).is_symlink()
+            if ver_pattern.match(d) and not (candidate_parent / d).is_symlink()
         ]
         if len(subdirs) <= keep_versions:
             continue
@@ -686,14 +687,14 @@ def scan_versioned_release_dirs(
         active_refs: Set[str] = set()
         for jf in candidate_parent.glob("*.json"):
             try:
-                text = jf.read_text(encoding="utf-8", errors="ignore")
-                active_refs.update(re.findall(r"[A-Za-z0-9_.\-]+(?:beta|rc|alpha|v)\d+[A-Za-z0-9_.\-]*", text))
+                jtext = jf.read_text(encoding="utf-8", errors="ignore")
+                active_refs.update(re.findall(r"[A-Za-z0-9_.\-]+(?:beta|rc|alpha|v)\d+[A-Za-z0-9_.\-]*", jtext))
             except OSError:
                 pass
 
         groups: Dict[str, List[Path]] = {}
         for d in subdirs:
-            m = re.match(r"^(.*?)(v?\d+\.\d+\.\d+.*)$", d.name)
+            m = ver_pattern.match(d.name)
             if m:
                 prefix = m.group(1).rstrip("-_")
                 groups.setdefault(prefix, []).append(d)
@@ -884,6 +885,54 @@ def scan_iterative_run_backups(
                                 )
                             )
         dirnames[:] = []
+
+
+
+
+def scan_orphan_git_worktrees(
+    root: Path,
+    report: ScanReport,
+    seen_paths: Set[Path],
+) -> None:
+    """
+    Gate 05E: Detect orphaned `.git/worktrees/<id>` administrative directories whose target
+    `gitdir` path (resolved for both relative and absolute paths) no longer exists on disk.
+    """
+    for dirpath, dirnames, _ in os.walk(root, topdown=True, followlinks=False):
+        current_dir = Path(dirpath)
+        if current_dir in seen_paths or any(p in seen_paths for p in current_dir.parents):
+            dirnames[:] = []
+            continue
+        if ".git" in dirnames:
+            wt_root = current_dir / ".git" / "worktrees"
+            if wt_root.is_dir():
+                for wt in sorted(wt_root.iterdir()):
+                    if not wt.is_dir() or wt in seen_paths:
+                        continue
+                    gitdir_file = wt / "gitdir"
+                    if gitdir_file.exists():
+                        try:
+                            raw = gitdir_file.read_text(encoding="utf-8", errors="ignore").strip()
+                            if raw:
+                                resolved = (wt / raw).resolve() if not os.path.isabs(raw) else Path(raw)
+                                if not resolved.exists():
+                                    sz = get_path_size(wt)
+                                    seen_paths.add(wt)
+                                    report.candidates.append(
+                                        CandidateItem(
+                                            path=wt,
+                                            category="Orphaned Git Worktree Metadata (.git/worktrees)",
+                                            size_bytes=sz,
+                                            reason=f"Target worktree gitdir no longer exists ({raw})",
+                                            is_dir=True,
+                                        )
+                                    )
+                        except OSError:
+                            pass
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in FAST_SKIP_DIRS and d != ".git" and (current_dir / d) not in seen_paths
+        ]
 
 
 # ============================================================================
@@ -1078,17 +1127,16 @@ def scan_workspace(
                     report.skipped_active.append(f"Skipped recently modified (<{min_age_hours}h): {d_path}")
                     continue
                 sz = get_path_size(d_path)
-                if sz > 0:
-                    seen_paths.add(d_path)
-                    report.candidates.append(
-                        CandidateItem(
-                            path=d_path,
-                            category=matched_category,
-                            size_bytes=sz,
-                            reason=matched_reason,
-                            is_dir=True,
-                        )
+                seen_paths.add(d_path)
+                report.candidates.append(
+                    CandidateItem(
+                        path=d_path,
+                        category=matched_category if sz > 0 else f"Empty/Skeleton {matched_category}",
+                        size_bytes=sz,
+                        reason=matched_reason if sz > 0 else f"0-byte skeleton/broken-symlink remnant ({matched_reason})",
+                        is_dir=True,
                     )
+                )
                 continue
 
             kept_dirs.append(d)
@@ -1159,6 +1207,9 @@ def scan_workspace(
         report=report,
         seen_paths=seen_paths,
     )
+
+    # Pass 2D: Orphaned Git worktree administrative metadata (.git/worktrees/<id> with missing target)
+    scan_orphan_git_worktrees(root, report, seen_paths)
 
     # Pass 3: Fast SHA-256 duplicate scratch/test artifact detection
     scan_duplicate_scratch_files(
@@ -1251,6 +1302,351 @@ def scan_xcode_system_caches(include_device_support: bool = False) -> ScanReport
                                 is_dir=True,
                             )
                         )
+
+    return report
+
+
+
+
+def scan_macos_system_orphans(keep_versions: int = 1) -> ScanReport:
+    """
+    Scan macOS user (`~/Library`, `~/.*`) and system (`/Library`) directories for:
+      1. Orphaned & defunct `LaunchAgents` (`*.plist` with missing target binary or empty stub)
+         [Attributed to: alienator88/Pearcleaner, slow-coding/fullcleaner, KnockKnock]
+      2. Orphaned Sandbox `Containers`, `Group Containers` (TeamID verified), `Saved Application State`,
+         and `Preferences` of uninstalled applications
+         [Attributed to: tw93/Mole, momenbasel/PureMac, alienator88/Pearcleaner, Alyetama/Sweep]
+      3. Verified Uninstalled Application Support & Suite Remnants (e.g., uninstalled Adobe apps,
+         browsers, IDEs) while preserving shared components of installed apps (e.g., CameraRaw for DNG Converter)
+         [Attributed to: jithin-sabu/purge-app, Homebrew Cask zap stanzas]
+      4. Desktop App Updater Staging (`*-updater`, `*.updater`, `GoogleUpdater/crx_cache`),
+         Telemetry/Crash dumps (`dunamis`, `DiagnosticReports`, `CrashReporter`), global package caches
+         (`pip`, `pnpm`, `npm/_cacache`), and superseded multi-version AI agent runtime bundles
+         [Attributed to: tw93/Mole, mac-cleanup/mac-cleanup-py]
+    """
+    home = Path.home()
+    report = ScanReport(root=home / "Library")
+    seen: Set[Path] = set()
+
+    def is_deletable_by_user(p: Path) -> bool:
+        try:
+            st = p.lstat()
+            if st.st_uid != os.getuid():
+                return False
+            if p.is_dir() and not p.is_symlink():
+                # Check if macOS TCC (com.apple.containermanager.identity or App Management TCC) blocks unlinking
+                os.listdir(p)
+                for r, d, files in os.walk(p):
+                    for name in list(d) + list(files):
+                        sub = Path(r) / name
+                        if sub.lstat().st_uid != os.getuid():
+                            return False
+            return True
+        except OSError:
+            return False
+
+    def add_candidate(p: Path, cat: str, reason: str, allow_zero: bool = True) -> None:
+        if p in seen or (not p.exists() and not p.is_symlink()):
+            return
+        if not os.access(p.parent, os.W_OK) or not is_deletable_by_user(p):
+            return
+        sz = get_path_size(p)
+        if any(part in ("Containers", "Group Containers") for part in p.parts) and sz < 1024 * 1024:
+            # Skip empty/stub TCC-locked sandbox container nodes (<1 MB) per tw93/Mole TCC boundary rule
+            return
+        if sz == 0 and p.is_dir() and not p.is_symlink():
+            # Check if macOS App Management TCC (com.apple.provenance) blocks rmdir on 0-byte stub
+            return
+        if sz > 0 or allow_zero:
+            seen.add(p)
+            report.candidates.append(
+                CandidateItem(path=p, category=cat, size_bytes=sz, reason=reason, is_dir=p.is_dir())
+            )
+
+    # Build active installed identity inventory (Bundle IDs, App Names, Team IDs, Symlinked Binaries)
+    installed_bids: Set[str] = set()
+    installed_team_ids: Set[str] = set()
+    installed_app_stems: Set[str] = set()
+    active_symlink_targets: Set[Path] = set()
+
+    for bin_dir in (home / ".local" / "bin", Path("/usr/local/bin"), Path("/opt/homebrew/bin")):
+        if bin_dir.is_dir():
+            for b in bin_dir.iterdir():
+                if b.is_symlink():
+                    try:
+                        active_symlink_targets.add(b.resolve())
+                    except OSError:
+                        pass
+
+    for app_root in (Path("/Applications"), home / "Applications", Path("/System/Applications"), Path("/Applications/Utilities")):
+        if not app_root.is_dir():
+            continue
+        for item in app_root.iterdir():
+            if item.name.endswith(".app"):
+                installed_app_stems.add(item.stem.lower())
+            elif item.is_dir() and not item.is_symlink():
+                for sub in item.iterdir():
+                    if sub.name.endswith(".app"):
+                        installed_app_stems.add(sub.stem.lower())
+
+    if os.path.exists(LSREGISTER_PATH):
+        try:
+            dump_out = subprocess.check_output([LSREGISTER_PATH, "-dump"], text=True, errors="ignore")
+            cur_valid_path: Optional[str] = None
+            for line in dump_out.splitlines():
+                if line.startswith("path:"):
+                    m = re.match(r"^path:\s+(.*?)\s+\(0x", line)
+                    if m:
+                        p_str = m.group(1).strip()
+                        if os.path.exists(p_str) and not any(
+                            k in p_str for k in ("/.Trash", "/.Trashes/", "/DerivedData/", "/AI/Archive/", "/AI/Migration/")
+                        ):
+                            cur_valid_path = p_str
+                        else:
+                            cur_valid_path = None
+                elif line.startswith("identifier:") and cur_valid_path:
+                    bid = line.split(":", 1)[1].strip().split(" (")[0].strip().lower()
+                    installed_bids.add(bid)
+                elif line.startswith("teamID:") and cur_valid_path:
+                    tid = line.split(":", 1)[1].strip().upper()
+                    if tid and tid != "0000000000":
+                        installed_team_ids.add(tid)
+        except Exception:
+            pass
+
+    try:
+        pkgs = subprocess.check_output(["pkgutil", "--pkgs"], text=True, errors="ignore").splitlines()
+        for pk in pkgs:
+            installed_bids.add(pk.strip().lower())
+    except Exception:
+        pass
+
+    def has_app_matching(substr: str) -> bool:
+        s = substr.lower()
+        return any(s in stem for stem in installed_app_stems)
+
+    # 1. Rule A: Orphaned & Defunct LaunchAgents (Pearcleaner / fullcleaner / KnockKnock rule)
+    for la_dir in (home / "Library" / "LaunchAgents", Path("/Library/LaunchAgents")):
+        if not la_dir.is_dir():
+            continue
+        for plist_path in sorted(la_dir.glob("*.plist")):
+            if plist_path.name.startswith("com.apple."):
+                continue
+            try:
+                with open(plist_path, "rb") as f:
+                    pl = plistlib.load(f)
+                prog = pl.get("Program")
+                args = pl.get("ProgramArguments") or []
+                if not prog and not args:
+                    add_candidate(
+                        plist_path,
+                        "Orphaned / Defunct LaunchAgent (.plist)",
+                        "Empty stub LaunchAgent plist with no Program or ProgramArguments",
+                    )
+                    continue
+                exe = prog or (args[0] if args else None)
+                if isinstance(exe, str) and exe.startswith("/") and not os.path.exists(exe):
+                    add_candidate(
+                        plist_path,
+                        "Orphaned / Broken LaunchAgent (.plist)",
+                        f"Target executable no longer exists ({exe})",
+                    )
+            except Exception:
+                pass
+
+    # 2. Rule B: Orphaned Sandbox Containers, Group Containers (TeamID verified) & Preferences
+    # (Mole / PureMac / Pearcleaner / Sweep rule)
+    containers_dir = home / "Library" / "Containers"
+    if containers_dir.is_dir():
+        for cdir in sorted(containers_dir.iterdir()):
+            cname = cdir.name
+            if cname.startswith((".", "com.apple.")):
+                continue
+            if any(
+                cname.startswith(prefix)
+                for prefix in (
+                    "com.kafu.PrismV3GammaPairProbe",
+                    "com.kafu.PrismGammaRequestProbe",
+                    "com.kafu.PrismGradeLab.service",
+                )
+            ):
+                add_candidate(
+                    cdir,
+                    "Orphaned Sandbox Container (~/Library/Containers)",
+                    f"Sandbox container for uninstalled diagnostic probe '{cname}'",
+                )
+
+    group_containers_dir = home / "Library" / "Group Containers"
+    if group_containers_dir.is_dir():
+        team_re = re.compile(r"^([A-Z0-9]{10})\.(.+)$")
+        for gdir in sorted(group_containers_dir.iterdir()):
+            gname = gdir.name
+            if gname.startswith((".", "com.apple.", "group.com.apple.")):
+                continue
+            m = team_re.match(gname)
+            if m:
+                tid, suite = m.group(1), m.group(2).lower()
+                if "apple" in suite:
+                    continue
+                if tid not in installed_team_ids and not any(
+                    suite == b or b.startswith(suite + ".") or suite.startswith(b + ".")
+                    for b in installed_bids
+                ):
+                    add_candidate(
+                        gdir,
+                        "Orphaned Group Container (~/Library/Group Containers)",
+                        f"Developer Team ID '{tid}' ({suite}) has zero installed applications on system",
+                    )
+
+    prefs_dir = home / "Library" / "Preferences"
+    if prefs_dir.is_dir():
+        uninstalled_pref_checks = [
+            ("com.adobe.AfterEffects.", "after effects", "Adobe After Effects"),
+            ("com.Adobe.After Effects", "after effects", "Adobe After Effects"),
+            ("com.adobe.Install.Acrobat", "acrobat", "Adobe Acrobat"),
+            ("com.adobe.acrobat_webcapture", "acrobat", "Adobe Acrobat"),
+            ("com.adobe.Synchronizer.DC", "acrobat", "Adobe Acrobat"),
+            ("com.adobe.ame.application", "media encoder", "Adobe Media Encoder"),
+            ("com.blackmagic-design.DaVinciResolveProjectServer", "davinci resolve", "DaVinci Resolve"),
+            ("app.creatorcache.cleaner", "creatorcachecleaner", "CreatorCacheCleaner"),
+            ("com.kafu.PrismGradeInstaller.local", "prismgradeinstaller", "PrismGradeInstaller"),
+            ("com.kafu.FCPRetimePointAssistant", "fcpretimepointassistant", "FCPRetimePointAssistant"),
+            ("com.adobe.crashreporter.plist", "__never__", "Adobe CrashReporter"),
+            ("com.adobe.dunamis.plist", "__never__", "Adobe Dunamis Telemetry"),
+        ]
+        for pfile in sorted(prefs_dir.glob("*.plist")):
+            for prefix, app_probe, label in uninstalled_pref_checks:
+                if pfile.name.startswith(prefix) and not has_app_matching(app_probe):
+                    add_candidate(
+                        pfile,
+                        "Orphaned App Preference (~/Library/Preferences)",
+                        f"Preference plist for uninstalled {label}",
+                    )
+                    break
+
+    # 3. Rule C: Verified Uninstalled Application Support & Suite Remnants
+    # (purge-app / Homebrew Cask zap / Pearcleaner rule)
+    app_support_checks = [
+        # Adobe suite components (preserving CameraRaw for installed Adobe DNG Converter)
+        (Path("/Library/Application Support/Adobe/Acrobat"), "acrobat", "Adobe Acrobat"),
+        (Path("/Library/Application Support/Adobe/MACPDFM"), "acrobat", "Adobe Acrobat PDFMaker"),
+        (Path("/Library/Application Support/Adobe/Acrobat DC Helper Frameworks"), "acrobat", "Adobe Acrobat Helper"),
+        (Path("/Library/Application Support/Adobe/ARMDC"), "acrobat", "Adobe Acrobat Refresh Manager"),
+        (home / "Library/Application Support/Adobe/Acrobat", "acrobat", "Adobe Acrobat"),
+        (Path("/Library/Application Support/Adobe/Adobe Photoshop 2026"), "photoshop", "Adobe Photoshop 2026"),
+        (home / "Library/Application Support/Adobe/Adobe Photoshop 2026", "photoshop", "Adobe Photoshop 2026"),
+        (Path("/Library/Application Support/Adobe/After Effects"), "after effects", "Adobe After Effects"),
+        (home / "Library/Application Support/Adobe/Adobe Illustrator 29", "illustrator", "Adobe Illustrator 29"),
+        (home / "Library/Caches/com.adobe.LightroomClassicCC7", "lightroom", "Adobe Lightroom Classic"),
+        (Path("/Library/Application Support/Adobe/Installers"), "__never__", "Adobe Stale Installer Cache"),
+        (Path("/Library/Application Support/Adobe/Uninstall"), "__never__", "Adobe Stale Uninstall Leftovers"),
+        # Uninstalled IDEs, Browsers & Utilities
+        (home / "Library/Application Support/Google/AndroidStudio2026.1.1", "android studio", "Android Studio"),
+        (home / ".skiko", "android studio", "JetBrains Skiko Native Cache"),
+        (Path("/Library/Application Support/Microsoft"), "microsoft", "Microsoft Office/Edge"),
+        (home / "Library/Application Support/Microsoft", "microsoft", "Microsoft Office/Edge"),
+        (home / "Library/Application Support/Microsoft Edge", "microsoft edge", "Microsoft Edge"),
+        (Path("/Library/Application Support/Mozilla"), "firefox", "Mozilla Firefox"),
+        (Path("/Library/Application Support/clash-verge-service"), "clash verge", "Clash Verge"),
+        (home / "Library/Application Support/com.operasoftware.Opera", "opera", "Opera Browser"),
+        (home / "Library/Application Support/Vivaldi", "vivaldi", "Vivaldi Browser"),
+        (home / "Library/Application Support/BraveSoftware", "brave", "Brave Browser"),
+        (home / "Library/Application Support/Chromium", "chromium", "Chromium Browser"),
+        (home / "Library/Application Support/com.meta.endo", "endo", "Meta Endo Prototype"),
+        (home / "Library/Application Support/com.meta.prototypes.endo.tokens", "endo", "Meta Endo Tokens"),
+        (home / "Library/Application Support/Hatch", "hatch", "Hatch"),
+        (home / "Library/Application Support/NEGA Remote Install", "nega remote install", "NEGA Remote Install"),
+        (home / "Library/Application Support/CreatorCacheCleaner", "creatorcachecleaner", "CreatorCacheCleaner"),
+        (home / "Library/Application Support/yinghuo", "yinghuo", "Yinghuo"),
+    ]
+    for target_path, app_probe, label in app_support_checks:
+        if target_path.exists() and not has_app_matching(app_probe):
+            add_candidate(
+                target_path,
+                "Uninstalled App Leftovers (Application Support / Caches)",
+                f"Verified '{label}' is uninstalled across /Applications & ~/Applications",
+            )
+
+    # 4. Rule D: Desktop App Updater Staging, Telemetry & Package Download Caches
+    # (tw93/Mole & mac-cleanup-py rule)
+    caches_dir = home / "Library" / "Caches"
+    if caches_dir.is_dir():
+        for cchild in sorted(caches_dir.iterdir()):
+            if cchild.name.endswith("-updater") or cchild.name in {
+                "pip", "pnpm", "com.crashlytics.data", "io.sentry"
+            }:
+                add_candidate(
+                    cchild,
+                    "App Updater Staging & Package Caches",
+                    f"Disposable updater/package/telemetry cache '{cchild.name}'",
+                    allow_zero=False,
+                )
+
+    user_as = home / "Library" / "Application Support"
+    if user_as.is_dir():
+        for achild in sorted(user_as.iterdir()):
+            if achild.name.endswith(".updater") or achild.name in {
+                "com.adobe.dunamis", "CrashReporter", "com.amplitude.crash_report"
+            }:
+                add_candidate(
+                    achild,
+                    "App Updater Staging & Telemetry Dumps",
+                    f"Disposable updater staging or telemetry dump '{achild.name}'",
+                )
+
+    for extra_cache, reason in [
+        (home / "Library/Application Support/Google/GoogleUpdater/crx_cache", "Cached GoogleUpdater CRX installer packages"),
+        (home / ".npm/_cacache", "Regenerable npm content-addressable download cache"),
+        (home / "Library/Logs/DiagnosticReports", "macOS user diagnostic crash reports"),
+        (Path("/Library/Logs/DiagnosticReports"), "macOS system diagnostic crash reports"),
+        (Path("/Library/Logs/CrashReporter"), "macOS system CrashReporter logs"),
+    ]:
+        if extra_cache.exists():
+            add_candidate(extra_cache, "System Updater, Crash & Package Caches", reason, allow_zero=False)
+
+    # Orphaned interrupted runtime staging directories in ~/.cache/codex-runtimes
+    codex_rt = home / ".cache" / "codex-runtimes"
+    if codex_rt.is_dir():
+        for rt_child in sorted(codex_rt.iterdir()):
+            if "-install-" in rt_child.name:
+                add_candidate(
+                    rt_child,
+                    "Orphaned Agent Runtime Staging",
+                    f"Interrupted runtime install staging directory '{rt_child.name}'",
+                )
+
+    # Superseded multi-version agent runtime bundles (e.g., ~/Library/Application Support/Claude/claude-code/<ver>)
+    for ver_parent in [
+        home / "Library/Application Support/Claude/claude-code",
+        home / ".local/share/claude/versions",
+    ]:
+        if not ver_parent.is_dir():
+            continue
+        ver_dirs = [
+            d for d in ver_parent.iterdir()
+            if re.match(r"^v?\d+\.\d+\.\d+", d.name) and not d.is_symlink()
+        ]
+        if len(ver_dirs) <= max(1, keep_versions):
+            continue
+        ver_sorted = sorted(
+            ver_dirs,
+            key=lambda p: (version_sort_key(p.name), p.stat().st_mtime if p.exists() else 0.0),
+            reverse=True,
+        )
+        kept_vers = set(ver_sorted[:max(1, keep_versions)])
+        for vd in ver_sorted:
+            try:
+                if vd.resolve() in active_symlink_targets or any(vd.resolve() in t.parents for t in active_symlink_targets):
+                    kept_vers.add(vd)
+            except OSError:
+                pass
+        for vd in ver_sorted:
+            if vd not in kept_vers:
+                add_candidate(
+                    vd,
+                    "Superseded Agent Runtime Bundle",
+                    f"Superseded runtime version '{vd.name}' in {ver_parent.name} (newest & symlinked versions retained)",
+                )
 
     return report
 
@@ -1411,7 +1807,13 @@ def remove_path_permanently(target: Path) -> None:
     if target.is_symlink() or target.is_file():
         target.unlink()
     elif target.is_dir():
-        shutil.rmtree(target)
+        def _handle_readonly(func, path, exc_info):
+            try:
+                os.chmod(path, 0o700)
+                func(path)
+            except OSError:
+                pass
+        shutil.rmtree(target, onerror=_handle_readonly)
 
 
 def execute_cleanup(report: ScanReport, use_trash: bool = False) -> Tuple[int, int, List[Path], List[str]]:
@@ -1600,6 +2002,11 @@ def main() -> int:
         help="When used with --clean-xcode, also clean ~/Library/Developer/Xcode/*OS DeviceSupport symbol caches.",
     )
     parser.add_argument(
+        "--clean-orphans",
+        action="store_true",
+        help="Deep-scan ~/Library & /Library for uninstalled app leftovers, orphaned Containers/Group Containers, broken LaunchAgents, updater staging caches, and superseded agent runtimes.",
+    )
+    parser.add_argument(
         "--clean-launchservices",
         action="store_true",
         help="Unregister ghost/deleted/build-artifact `.app` bundles from macOS LaunchServices (`lsregister -u` & `-gc`).",
@@ -1636,8 +2043,8 @@ def main() -> int:
             args.execute = True
     raw_Input_paths.extend(args.roots)
 
-    if not raw_Input_paths and not args.clean_xcode and not args.clean_launchservices:
-        parser.error("Please provide at least one workspace path (or `--root PATH`, `--clean-xcode`, `--clean-launchservices`).")
+    if not raw_Input_paths and not args.clean_xcode and not args.clean_launchservices and not args.clean_orphans:
+        parser.error("Please provide at least one workspace path (or `--root PATH`, `--clean-xcode`, `--clean-orphans`, `--clean-launchservices`).")
 
     active_paths, active_basenames = collect_active_process_paths()
     reports: List[ScanReport] = []
@@ -1663,6 +2070,10 @@ def main() -> int:
     if args.clean_xcode:
         xcode_rep = scan_xcode_system_caches(include_device_support=args.clean_device_support)
         reports.append(xcode_rep)
+
+    if args.clean_orphans:
+        orphan_rep = scan_macos_system_orphans(keep_versions=1)
+        reports.append(orphan_rep)
 
     if not args.json:
         print_summary(reports, execute=args.execute)

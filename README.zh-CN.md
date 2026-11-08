@@ -60,7 +60,7 @@ python3 scripts/agent_slim.py scan --root ~/Projects --clean-xcode --clean-launc
 核对审计报告后执行永久空间回收，自动执行五道安全门禁并从 macOS LaunchServices 注销残留构建应用图标：
 
 ```bash
-python3 scripts/agent_slim.py clean --root ~/Projects --keep-latest-release 2 --clean-xcode --clean-device-support --clean-launchservices --shield-spotlight
+python3 scripts/agent_slim.py clean --root ~/Projects --keep-latest-release 2 --clean-xcode --clean-device-support --clean-orphans --clean-launchservices --shield-spotlight
 ```
 
 ### 3. 导出结构化报告
@@ -87,6 +87,18 @@ agent-slim/
 
 ---
 
-## 五、开源协议
+## 五、开源规则引用与致谢 (Attributions & Credits)
+
+`agent-slim` 的孤立文件检测、卸载残留识别与多语言构建清理规则参考并融合了以下优秀开源项目的核心思路由此致谢：
+
+- **[`alienator88/Pearcleaner`](https://github.com/alienator88/Pearcleaner)**（`Locations.swift` 与 Orphan Scanner）：`~/Library` 与 `/Library` 卸载残留目录分类体系及 `LaunchAgents` 目标可执行文件校验。
+- **[`tw93/Mole`](https://github.com/tw93/Mole)**（`SECURITY_AUDIT.md`、`clean_app_caches`、`clean_user_core`）：严格基于 Bundle ID 归属而非模糊名称猜测、macOS TCC / 沙盒容器（`containermanagerd` / `com.apple.provenance`）安全边界保护，以及桌面端 `*-updater` 升级暂存包清理。
+- **[`momenbasel/PureMac`](https://github.com/momenbasel/PureMac)**、**[`slow-coding/fullcleaner`](https://github.com/slow-coding/fullcleaner)** 与 **[`Alyetama/Sweep`](https://github.com/Alyetama/Sweep)**：结合 `LaunchServices`（`lsregister -dump`）、`pkgutil --pkgs` 安装凭据与 10 位 Apple 开发者 `TeamID` 前缀（`<TEAMID>.<suite>`）交叉验证孤立 `Containers` 与 `Group Containers`。
+- **[`jithin-sabu/purge-app`](https://github.com/jithin-sabu/purge-app)** 与 **Homebrew Cask `zap` 规则**：基于确定性二进制存在性映射清理 `Application Support`（例如按单品独立校验 Adobe 组件，清理已卸载的 `Acrobat`/`Illustrator` 残留，同时保护 `Adobe DNG Converter` 依赖的 `CameraRaw`）。
+- **[`tbillington/kondo`](https://github.com/tbillington/kondo)**、**[`voidcosmos/npkill`](https://github.com/voidcosmos/npkill)**、**[`mac-cleanup/mac-cleanup-py`](https://github.com/mac-cleanup/mac-cleanup-py)** 与 **[`brege/dil`](https://github.com/brege/dil)**：在清理 `target/`、`build/`、`.build/` 等同名目录前强制校验同级工程清单锚点文件（`Cargo.toml`、`Package.swift`、`pom.xml`、`build.gradle`、`CMakeLists.txt`），以及全局包管理器缓存（`pip`、`pnpm`、`npm/_cacache`）清理规范。
+
+---
+
+## 六、开源协议
 
 本项目基于 [MIT 协议](./LICENSE) 开源发布。

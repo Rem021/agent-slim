@@ -7,7 +7,7 @@ description: Universal AI Agent, Xcode & Multi-Stack Workspace Deep Cleaner. Use
 
 AI coding agents frequently spawn parallel git worktrees, run isolated compiler/test matrices, dump intermediate debug probes, and accumulate hundreds of gigabytes of hidden build caches (`target/`, `DerivedData/`, `Debug-iphonesimulator/`, `.saved-application`, `.next/`, `wandb/`, `Library/`, `.gradle/`, `.terraform/`, iterative `.cpio` rootfs images) — while also polluting macOS `LaunchServices` (`lsregister`) and Launchpad with broken `🚫` build-artifact `.app` icons.
 
-`agent-slim` (`v2.1.0`) is a **zero-dependency, 5-gate safety disk space reclaimer and Xcode/macOS hygiene engine** designed for **any developer's AI Agent projects** across **7 major technology ecosystems**.
+`agent-slim` (`v2.2.0`) is a **zero-dependency, 5-gate safety disk space reclaimer and Xcode/macOS hygiene engine** designed for **any developer's AI Agent projects** across **7 major technology ecosystems**.
 
 ---
 
@@ -78,6 +78,7 @@ python3 ~/.agents/skills/agent-slim/scripts/agent_slim.py ~/Projects \
   --dedup-scratch-mb 25 \
   --clean-xcode \
   --clean-device-support \
+  --clean-orphans \
   --clean-launchservices \
   --shield-spotlight \
   --report-json /tmp/agent-slim-audit.json \
@@ -99,7 +100,21 @@ python3 ~/.agents/skills/agent-slim/scripts/agent_slim.py ~/Projects \
 | `--dedup-scratch-mb MB` | `25.0` | Fast SHA-256 deduplication of identical large files (`>= MB`) inside scratch/temp/test folders (`0` to disable) |
 | `--clean-xcode` | `False` | Clean `~/Library/Developer/Xcode/DerivedData`, `CoreSimulator` caches/clones/`coresymbolicationd`, `XCTestDevices`, SwiftPM caches, and unavailable simulators |
 | `--clean-device-support` | `False` | When used with `--clean-xcode`, also clean `~/Library/Developer/Xcode/*OS DeviceSupport` symbol caches |
+| `--clean-orphans` | `False` | Deep-scan `~/Library` & `/Library` for uninstalled app leftovers, orphaned `Containers`/`Group Containers` (TeamID verified), broken `LaunchAgents`, updater staging caches, and superseded agent runtimes |
 | `--clean-launchservices` | `False` | Unregister ghost, deleted, and build-artifact `.app` bundles from macOS `LaunchServices` (`lsregister -u` & `-gc`) |
 | `--shield-spotlight` | `False` | Create `.metadata_never_index` markers in transient build/worktree directories |
 | `-- clean-simulators` | `False` | Run `xcrun simctl delete unavailable` on macOS to remove orphaned iOS Simulator runtimes |
 | `--report-json PATH` / `--json` | `None` | Export a detailed JSON audit report of all candidates, sizes, and protected items |
+
+---
+
+## 5. Open-Source Rule Attributions & Credits
+
+`agent-slim` v2.2.0 synthesizes and extends battle-tested orphan detection and developer cleanup rules from the open-source community:
+
+- **[`alienator88/Pearcleaner`](https://github.com/alienator88/Pearcleaner)** (`Locations.swift` & Orphaned Files Scanner): Target directory taxonomy across `~/Library` and `/Library` (`Application Support`, `Containers`, `Group Containers`, `Saved Application State`, `HTTPStorages`, `Preferences`, `LaunchAgents`).
+- **[`tw93/Mole`](https://github.com/tw93/Mole)** (`SECURITY_AUDIT.md`, `clean_app_caches`, `clean_user_core`): Strict Bundle Identifier attribution over fuzzy name guessing, macOS App Sandbox / TCC (`containermanagerd` / `com.apple.provenance`) boundary guards, shared `Group Containers` protection, and Electron/desktop `*-updater` staging cleanup.
+- **[`momenbasel/PureMac`](https://github.com/momenbasel/PureMac)**, **[`slow-coding/fullcleaner`](https://github.com/slow-coding/fullcleaner)** & **[`Alyetama/Sweep`](https://github.com/Alyetama/Sweep)**: Multi-signal identity inventory combining `LaunchServices` (`lsregister -dump`), `pkgutil --pkgs` installer receipts, 10-character Apple Developer `TeamID` prefix verification (`<TEAMID>.<suite>`), and `LaunchAgents` `Program` / `ProgramArguments` binary existence checks.
+- **[`jithin-sabu/purge-app`](https://github.com/jithin-sabu/purge-app)** & **Homebrew Cask `zap` Stanzas**: Deterministic app-to-support-directory verification (e.g., per-product Adobe suite verification that cleans uninstalled `Acrobat`/`Illustrator` leftovers while preserving `CameraRaw` for installed `Adobe DNG Converter`).
+- **[`tbillington/kondo`](https://github.com/tbillington/kondo)**, **[`voidcosmos/npkill`](https://github.com/voidcosmos/npkill)**, **[`mac-cleanup/mac-cleanup-py`](https://github.com/mac-cleanup/mac-cleanup-py)** & **[`brege/dil`](https://github.com/brege/dil)**: Sibling-manifest anchor verification (`Cargo.toml`, `Package.swift`, `pom.xml`, `build.gradle`, `CMakeLists.txt`, `*.uproject`) before pruning ambiguous `target/` or `build/` directories, plus global toolchain cache purging (`pip`, `pnpm`, `npm/_cacache`).
+
