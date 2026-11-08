@@ -1301,7 +1301,7 @@ def clean_launchservices_ghost_apps(execute: bool, extra_unregistered_paths: Opt
             p_str = m.group(1).strip()
             if not p_str or p_str.startswith(("/System/", "/Library/")):
                 continue
-            if "/Library/Daemon Containers/" in p_str:
+            if "/Library/Daemon Containers/" in p_str and "Runner.app" not in p_str and ".xctrunner" not in p_str:
                 continue
             if any(marker in p_str for marker in transient_markers) or not os.path.exists(p_str):
                 to_unregister.add(p_str)
