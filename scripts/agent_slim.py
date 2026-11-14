@@ -955,7 +955,50 @@ def scan_duplicate_scratch_files(
     if dedup_min_mb <= 0:
         return
     min_bytes = int(dedup_min_mb * 1024 * 1024)
-    scratch_keywords = {"tmp", "temp", "scratch", "test_out", "exports", "dumps", "captures", "work"}
+    scratch_tokens = {"tmp", "temp", "scratch", "test_out", "exports", "dumps", "captures", "work"}
+
+    def _rel_parts_lower(target: Path) -> List[str]:
+        try:
+            return [seg.lower() for seg in target.relative_to(root).parts[:-1]]
+        except ValueError:
+            return [seg.lower() for seg in target.parts[:-1]]
+
+    def _is_scratch_path(target: Path) -> bool:
+        segs = _rel_parts_lower(target)
+        if "archive" in segs:
+            return False
+        for seg in segs:
+            tokens = set(re.split(r"[-_.]", seg))
+            if seg in scratch_tokens or (tokens & scratch_tokens):
+                return True
+        return False
+
+    git_tracked_cache: Dict[Path, Set[str]] = {}
+    def _is_git_tracked(target: Path) -> bool:
+        cur = target.parent
+        git_root: Optional[Path] = None
+        while cur != cur.parent:
+            if (cur / ".git").exists():
+                git_root = cur
+                break
+            cur = cur.parent
+        if git_root is None:
+            return False
+        if git_root not in git_tracked_cache:
+            try:
+                out = subprocess.check_output(
+                    ["git", "-C", str(git_root), "ls-files"],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                )
+                git_tracked_cache[git_root] = set(out.splitlines())
+            except Exception:
+                git_tracked_cache[git_root] = set()
+        try:
+            rel = str(target.relative_to(git_root))
+            return rel in git_tracked_cache[git_root]
+        except ValueError:
+            return False
 
     sig_map: Dict[str, List[Path]] = {}
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
@@ -963,7 +1006,10 @@ def scan_duplicate_scratch_files(
         if current_dir in seen_paths or any(p in seen_paths for p in current_dir.parents):
             dirnames[:] = []
             continue
-        dirnames[:] = [d for d in dirnames if d not in FAST_SKIP_DIRS and (current_dir / d) not in seen_paths]
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in FAST_SKIP_DIRS and d.lower() != "archive" and (current_dir / d) not in seen_paths
+        ]
 
         for fname in filenames:
             fpath = current_dir / fname
@@ -990,7 +1036,7 @@ def scan_duplicate_scratch_files(
                 is_ref = 0 if (p.resolve() in referenced_paths or p.name in referenced_names) else 1
             except OSError:
                 is_ref = 1
-            in_scratch = 1 if any(k in part.lower() for part in p.parts for k in scratch_keywords) else 0
+            in_scratch = 1 if _is_scratch_path(p) else 0
             return (is_ref, in_scratch, str(p))
 
         sorted_paths = sorted(paths, key=canonical_priority)
@@ -1001,8 +1047,9 @@ def scan_duplicate_scratch_files(
                     continue
             except OSError:
                 pass
-            dup_parts_lower = [part.lower() for part in dup.parts]
-            if any(k in part for part in dup_parts_lower for k in scratch_keywords) or "copy" in dup.name.lower():
+            if _is_git_tracked(dup):
+                continue
+            if _is_scratch_path(dup) or "copy" in dup.name.lower():
                 sz = get_path_size(dup)
                 seen_paths.add(dup)
                 report.candidates.append(
@@ -1842,10 +1889,11 @@ def execute_cleanup(report: ScanReport, use_trash: bool = False) -> Tuple[int, i
     # Also purge any legacy `.Trashes/<uid>/agent-slim` or `~/.Trash/agent-slim` staging folders when not using `--trash`
     if not use_trash:
         uid = os.getuid()
-        legacy_trashes = [
-            Path.home() / ".Trash" / "agent-slim",
-            Path("/Volumes/KAFU2T/.Trashes") / str(uid) / "agent-slim",
-        ]
+        legacy_trashes = [Path.home() / ".Trash" / "agent-slim"]
+        volumes_root = Path("/Volumes")
+        if volumes_root.is_dir():
+            for vol in volumes_root.iterdir():
+                legacy_trashes.append(vol / ".Trashes" / str(uid) / "agent-slim")
         for lt in legacy_trashes:
             try:
                 if lt.exists():
